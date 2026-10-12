@@ -1,0 +1,149 @@
+TIKE - LISTE DES TÂCHES DE DÉVELOPPEMENT
+Version : 1.0 - Plan de travail à valider
+Document associé : CONCEPTION_TIKE.txt
+
+INSTRUCTIONS À L’AGENT VS CODE
+- Avant toute action, inspecter le projet existant et lire CONCEPTION_TIKE.txt.
+- Ne pas supprimer/remplacer des fichiers existants sans expliquer pourquoi et obtenir confirmation si le risque est élevé.
+- Avancer par petites étapes. À la fin de chaque phase, résumer les fichiers modifiés, les commandes exécutées et les tests.
+- Ne pas commencer une phase dépendante si la précédente n’est pas validée.
+- Ne pas implémenter les fonctionnalités non validées. Marquer clairement ce qui est simulé.
+- Garder l’interface ultra simple, violette, en français.
+- Ne pas remplir le code de données fictives permanentes : les données de démonstration doivent être dans un script SQL séparé.
+- Toujours utiliser PreparedStatement, transactions SQL pour opérations multi-tables et mots de passe hashés.
+
+ÉTAT DES TÂCHES
+[À FAIRE] = non commencé
+[EN COURS] = en cours
+[À VALIDER] = livré pour revue utilisateur
+[VALIDÉ] = approuvé
+[BLOQUÉ] = décision ou dépendance manquante
+
+PHASE 0 - AUDIT ET VALIDATION
+T00 [VALIDÉ] Inspecter l’arborescence du projet TIKE, les fichiers existants et le dépôt Git.
+T01 [VALIDÉ] Identifier la version Java, le build (Maven/Gradle), le point d’entrée et les dépendances.
+T02 [VALIDÉ] Identifier la base de données disponible et vérifier la connexion sans exposer les secrets.
+T03 [VALIDÉ] Comparer le projet existant avec CONCEPTION_TIKE.txt et lister les écarts.
+T04 [VALIDÉ] Présenter un plan d’implémentation adapté à l’existant. Ne rien réécrire avant validation.
+Jalon : l’utilisateur valide le périmètre, les technologies et l’ordre de réalisation.
+
+PHASE 1 - SOCLE DU PROJET
+T05 [VALIDÉ] Organiser les packages sans casser l’existant : app, config, model, dao, service, ui, util.
+T06 [VALIDÉ] Configurer les dépendances nécessaires : pilote JDBC PostgreSQL et bibliothèque de hash de mot de passe.
+T07 [VALIDÉ] Créer la configuration de connexion via variables d’environnement ou configuration locale ignorée par Git.
+T08 [VALIDÉ] Ajouter un test simple de connexion à PostgreSQL et des messages d’erreur lisibles.
+T09 [VALIDÉ] Créer schema.sql avec les tables validées, contraintes, clés étrangères et index.
+T10 [VALIDÉ] Créer un script séparé de données de démonstration, sans secrets.
+T11 [VALIDÉ] Vérifier l’initialisation depuis une base vide.
+Jalon : connexion DB et schéma validés avant de poursuivre.
+
+PHASE 2 - DESIGN SYSTEM ET NAVIGATION
+T12 [VALIDÉ] Créer un thème violet partagé : couleurs, police, espacements, boutons, champs et tableaux.
+T13 [VALIDÉ] Créer la fenêtre principale redimensionnable et centrée.
+T14 [VALIDÉ] Créer une barre latérale simple avec logo/nom TIKE et navigation.
+T15 [VALIDÉ] Ajouter la gestion de session et filtrer les menus selon le rôle.
+T16 [VALIDÉ] Créer les composants réutilisables : formulaire, barre de recherche, tableau, dialogue de confirmation, message de résultat.
+T17 [VALIDÉ] Comparer les écrans avec l’image de référence fournie et garder une présentation minimaliste.
+Jalon : utilisateur valide l’apparence et la navigation avant les modules métier.
+
+PHASE 3 - AUTHENTIFICATION ET UTILISATEURS
+T18 [VALIDÉ] Créer les modèles Utilisateur et rôle.
+T19 [VALIDÉ] Implémenter DAO et service de connexion avec PreparedStatement.
+T20 [VALIDÉ] Hacher et vérifier les mots de passe ; ne jamais enregistrer en clair.
+T21 [VALIDÉ] Construire l’écran de connexion.
+T22 [VALIDÉ] Créer la gestion des utilisateurs réservée à ADMIN.
+T23 [VALIDÉ] Tester les accès ADMIN, AGENT et CONTROLEUR.
+Jalon : connexion et autorisations validées.
+
+PHASE 4 - LIEUX, SALLES, ÉVÉNEMENTS ET TARIFS
+T24 [VALIDÉ] Implémenter CRUD des lieux et salles avec validations.
+T25 [VALIDÉ] Implémenter événements : création, modification, recherche, filtres et statuts.
+T26 [VALIDÉ] Valider la chronologie des dates ; le contrôle du statut avant une vente sera raccordé à T33.
+T27 [VALIDÉ] Implémenter catégories de billets, prix et quantité totale.
+T28 [VALIDÉ] Ajouter vérification de capacité et conflits de salle si applicable.
+T29 [VALIDÉ] Créer les interfaces simples des modules.
+Jalon : données événementielles persistées et validées.
+
+PHASE 5 - CLIENTS ET VENTES
+T30 [VALIDÉ] Implémenter clients : ajout, modification, recherche et historique.
+T31 [VALIDÉ] Définir précisément le calcul du stock disponible.
+T32 [VALIDÉ] Implémenter le service de vente avec transaction SQL.
+T33 [VALIDÉ] Vérifier stock et statut de l’événement avant toute vente.
+T34 [VALIDÉ] Créer vente, lignes de vente, paiement et un billet par unité achetée dans une transaction.
+T35 [VALIDÉ] Garantir rollback complet si une étape échoue.
+T36 [VALIDÉ] Construire l’interface de vente avec total automatique et confirmation.
+T37 [VALIDÉ] Tester ventes valides, stock insuffisant et ventes concurrentes si possible.
+Jalon : aucun stock négatif et aucune vente partiellement enregistrée.
+
+PHASE 6 - RÉSERVATIONS (SI VALIDÉES POUR LA V1)
+T38 [VALIDÉ] Implémenter création de réservation et lignes.
+T39 [VALIDÉ] Définir et implémenter expiration, annulation et libération de stock.
+T40 [VALIDÉ] Empêcher qu’une réservation soit convertie en plusieurs ventes.
+T41 [VALIDÉ] Ajouter interface et filtres de réservation.
+T42 [VALIDÉ] Tester expiration et stock libéré une seule fois.
+Jalon : réservations validées.
+
+PHASE 7 - BILLETS ET IMPRESSION
+T43 [VALIDÉ] Générer un identifiant unique par billet.
+T44 [VALIDÉ] Ajouter la bibliothèque QR Code compatible avec la version Java.
+T45 [VALIDÉ] Générer le QR Code à partir d’un jeton/identifiant, sans données personnelles inutiles.
+T46 [VALIDÉ] Créer un aperçu de billet compact avec événement, date, catégorie, client et code.
+T47 [VALIDÉ] Exporter les billets en PDF (choix validé : PDF).
+T48 [VALIDÉ] Permettre la réimpression sans créer un nouveau billet.
+Jalon : billet lisible, unique et imprimable.
+
+PHASE 8 - CONTRÔLE D’ACCÈS
+T49 [VALIDÉ] Créer l’écran de contrôle avec saisie manuelle du code.
+T50 [VALIDÉ] Vérifier existence, événement, paiement, statut et réutilisation.
+T51 [VALIDÉ] Marquer le billet utilisé de façon atomique et enregistrer le contrôleur/date.
+T52 [VALIDÉ] Afficher clairement VALIDE, DÉJÀ UTILISÉ, NON PAYÉ, ANNULÉ ou INTROUVABLE.
+T53 [À FAIRE] Ajouter lecture par caméra seulement après validation de la faisabilité matérielle et de la bibliothèque.
+T54 [VALIDÉ] Tester deux tentatives successives sur le même billet.
+Jalon : un billet ne peut pas être accepté deux fois.
+
+PHASE 9 - ANNULATIONS ET REMBOURSEMENTS (SI VALIDÉS)
+T55 [VALIDÉ] Règles définies : remboursement intégral seulement, réservé aux administrateurs, enregistré après remboursement externe, refusé après utilisation d’un billet ou début de l’événement.
+T56 [VALIDÉ] Enregistrer les remboursements sans effacer l’historique.
+T57 [VALIDÉ] Invalider les billets remboursés et libérer le stock cohérent.
+T58 [VALIDÉ] Tester remboursement intégral, refus et cohérence du stock.
+Jalon : historique financier cohérent.
+
+PHASE 10 - TABLEAU DE BORD, STATISTIQUES ET HISTORIQUE
+T59 [À VALIDER] Implémenter les requêtes de synthèse SQL.
+T60 [À VALIDER] Afficher événements, billets vendus, revenus encaissés et réservations en attente.
+T61 [À VALIDER] Ajouter ventes par période/événement et taux de remplissage.
+T62 [À VALIDER] Ajouter export CSV.
+T63 [À VALIDER] Enregistrer les actions critiques dans journal_activites.
+T64 [À VALIDER] Créer les écrans statistiques et historique avec filtres.
+Jalon : chiffres du tableau de bord vérifiés contre la base.
+
+PHASE 11 - QUALITÉ ET LIVRAISON
+T65 [À FAIRE] Vérifier toutes les validations et les messages d’erreur.
+T66 [À FAIRE] Vérifier absence de concaténation SQL avec les saisies utilisateur.
+T67 [À FAIRE] Vérifier absence de mots de passe/secrets dans le dépôt.
+T68 [À FAIRE] Tester les rôles et restrictions d’accès.
+T69 [À FAIRE] Tester le parcours complet : événement -> catégorie -> client -> vente -> paiement -> billet -> contrôle.
+T70 [À FAIRE] Vérifier l’affichage à différentes tailles de fenêtre.
+T71 [À FAIRE] Documenter l’installation, la configuration PostgreSQL et le lancement.
+T72 [À FAIRE] Préparer une démonstration avec données de test et scénario de soutenance.
+T73 [À FAIRE] Faire un bilan des fonctionnalités terminées, limitées et non implémentées.
+Jalon final : validation utilisateur et préparation de la présentation.
+
+ORDRE DE PRIORITÉ RECOMMANDÉ
+Priorité P0 : audit, décisions de conception, connexion PostgreSQL, schéma, thème/navigation, authentification.
+Priorité P1 : lieux/salles, événements, catégories, clients, vente atomique, paiement enregistré, billets uniques.
+Priorité P2 : impression/QR Code, contrôle d’accès, tableau de bord, historique, export CSV.
+Priorité P3 : réservations avec expiration, remboursements avancés, lecture caméra, PDF/graphes.
+
+CRITÈRES DE FIN MINIMAUX
+- L’application démarre et se connecte à PostgreSQL.
+- Les rôles sont contrôlés.
+- Les événements et catégories sont persistés.
+- Une vente crée des billets uniques et un paiement cohérent.
+- Le stock ne devient jamais négatif.
+- Le contrôle refuse un billet impayé, annulé ou déjà utilisé.
+- Les statistiques proviennent de la base de données.
+- L’interface reste simple et violette.
+- Les instructions de lancement sont documentées.
+
+FIN DE LA LISTE DES TÂCHES

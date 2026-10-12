@@ -1,0 +1,49 @@
+# Maven and generated build output
+target/
+dist/
+out/
+build/
+
+# IDE settings
+.idea/
+.vscode/
+*.iml
+
+# Compiled files and logs
+*.class
+*.log
+*.log.*
+hs_err_pid*
+java_error_in_*
+
+# Local environment and credentials
+.env
+.env.*
+!.env.example
+db.properties
+db.local.properties
+db.*.local.properties
+*.local.properties
+*.pem
+*.key
+*.p12
+
+# Generated reports and ticket exports
+*.csv
+*.pdf
+
+# OS and temporary files
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
+
+# Local database backups
+*.dump
+*.backup
+*.sql.gz
+*.sql.zip

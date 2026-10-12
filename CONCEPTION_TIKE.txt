@@ -1,0 +1,466 @@
+TIKE - DOCUMENT DE CONCEPTION
+Version : 1.0 - Document de travail à valider
+Projet : Conception et développement d’un système informatisé de gestion de billetterie et de contrôle d’accès aux événements
+
+IMPORTANT POUR L’AGENT DE DÉVELOPPEMENT
+- Lire ce document et TACHES_TIKE.txt avant de modifier le code.
+- Ne pas tout développer en une seule fois. Suivre les tâches dans l’ordre et attendre la validation de l’utilisateur aux étapes indiquées.
+- Si le projet Java existe déjà, inspecter d’abord son arborescence, son build (Maven/Gradle), les dépendances et le code existant. Ne pas écraser un projet existant sans confirmation.
+- L’interface doit rester ULTRA SIMPLE : fond clair, violet comme couleur principale, peu de boutons, libellés explicites, tableaux lisibles, formulaires courts, marges régulières. Pas d’animations décoratives ni d’interface surchargée.
+- Ne jamais enregistrer un mot de passe en clair. Utiliser un hash adapté.
+- Ne jamais simuler un paiement réel ni prétendre qu’un paiement Mobile Money est intégré. Les paiements électroniques sont enregistrés comme mode de paiement, sauf intégration expressément décidée plus tard.
+- Toute opération financière ou réservation/vente doit être cohérente en base de données et utiliser des transactions SQL lorsque plusieurs tables sont modifiées.
+
+1. PRÉSENTATION
+Nom de l’application : TIKE
+Slogan proposé : « Un billet, un accès, une expérience. »
+Type : application de bureau Java Swing.
+Base de données : PostgreSQL.
+Accès aux données : JDBC.
+Domaine : vente/réservation de billets et contrôle d’accès aux événements.
+Langue de l’interface : français.
+Devise initiale : Ariary (Ar).
+Plateforme visée : Windows en priorité.
+
+2. OBJECTIF GÉNÉRAL
+Permettre à une organisation de créer et publier des événements, gérer les lieux et les capacités, vendre ou réserver des billets, suivre les paiements, générer et imprimer des billets identifiés par QR Code, vérifier les billets à l’entrée et consulter les statistiques d’activité.
+
+3. UTILISATEURS ET AUTORISATIONS
+3.1 Administrateur
+- Accès aux modules autorisés de l’application.
+- Créer, modifier et désactiver les comptes utilisateurs.
+- Gérer les événements, lieux, salles, catégories et tarifs.
+- Consulter ventes, paiements, remboursements, journaux et statistiques.
+- Les données historiques ne doivent pas être supprimées en cascade par erreur.
+
+3.2 Agent de billetterie
+- Consulter les événements ouverts à la vente.
+- Rechercher/enregistrer un client.
+- Créer une réservation si activée.
+- Vendre des billets et enregistrer le paiement.
+- Imprimer ou réimprimer un billet selon les règles.
+- Consulter ses ventes, sans administrer les utilisateurs.
+
+3.3 Contrôleur d’accès
+- Rechercher un billet par identifiant ou lire un QR Code si une caméra compatible est disponible.
+- Vérifier l’événement, le paiement, le statut et la date.
+- Valider l’entrée une seule fois.
+- Consulter le résultat de validation, sans accès aux fonctions financières complètes.
+
+4. PÉRIMÈTRE FONCTIONNEL
+M01 - Authentification et autorisations
+- Connexion/déconnexion.
+- Mots de passe hashés.
+- Rôles : ADMIN, AGENT, CONTROLEUR.
+- Vérification des autorisations avant d’ouvrir une fonctionnalité.
+- Messages d’erreur simples et sans exposer de données sensibles.
+
+M02 - Tableau de bord
+- Nombre d’événements à venir/en vente.
+- Billets vendus.
+- Revenus encaissés.
+- Réservations en attente.
+- Dernières opérations.
+- Les valeurs viennent de requêtes SQL réelles, pas de nombres codés en dur.
+
+M03 - Événements
+- Créer, consulter, modifier et rechercher un événement.
+- Champs : nom, description, type, date/heure de début, date/heure de fin facultative, lieu/salle, statut.
+- Statuts proposés : BROUILLON, PROGRAMME, EN_VENTE, COMPLET, ANNULE, TERMINE.
+- Empêcher la vente si l’événement est annulé, terminé ou hors période de vente.
+- Empêcher la suppression d’un événement ayant des ventes/historiques ; préférer le statut ANNULE.
+
+M04 - Lieux et salles
+- CRUD des lieux et salles.
+- Champs lieu : nom, adresse, ville, description facultative.
+- Champs salle : nom, lieu, capacité.
+- Une salle ne peut pas être utilisée simultanément pour deux événements qui se chevauchent, si les dates/heures se recouvrent.
+- La capacité totale des places configurées ne doit pas dépasser la capacité déclarée.
+
+M05 - Places et catégories
+- Deux modes à supporter dans la conception : places numérotées ou places libres. Pour la première version, commencer par les places libres avec capacité par catégorie, sauf validation contraire.
+- Catégories de billets : nom, prix de base, quantité disponible, description facultative.
+- Exemples : VIP, STANDARD, ÉCONOMIQUE.
+- Le stock disponible doit être calculé ou mis à jour de façon cohérente.
+- Si des places numérotées sont retenues plus tard, une place ne peut être vendue/réservée qu’une fois pour un événement.
+
+M06 - Clients
+- Enregistrer, modifier, rechercher et consulter les clients.
+- Champs : nom complet, téléphone, e-mail facultatif.
+- Éviter les doublons manifestes, notamment par téléphone si renseigné.
+- Historique des billets, réservations et paiements associés.
+
+M07 - Vente de billets
+- Sélectionner événement, catégorie, client, quantité.
+- Calculer automatiquement le montant.
+- Valider disponibilité avant vente.
+- Générer un numéro de vente et un billet unique pour chaque entrée.
+- Une vente confirmée et son paiement doivent être enregistrés dans une transaction SQL.
+- Interdire de vendre plus de billets que la quantité restante.
+- Ne pas permettre de vente pour un événement annulé/terminé.
+- Prévoir l’option de remise seulement si validée ; par défaut, aucune remise.
+
+M08 - Réservations
+- Réserver une quantité de billets pour un client, avec une date d’expiration.
+- Statuts : EN_ATTENTE, CONFIRMEE, EXPIREE, ANNULEE.
+- Les billets réservés ne sont pas valables pour entrer tant que la vente/le paiement n’est pas confirmé selon la règle adoptée.
+- À l’expiration, libérer le stock de manière sûre.
+- Pour la première version, l’expiration peut être vérifiée à l’ouverture du module et avant toute nouvelle vente ; une tâche planifiée n’est pas obligatoire.
+- Éviter de réserver plus de billets que le stock restant.
+
+M09 - Paiements
+- Enregistrer les paiements en espèces, Mobile Money, carte ou virement comme méthodes déclaratives.
+- Champs : vente, montant, méthode, date, référence facultative, statut.
+- Statuts : EN_ATTENTE, PAYE, ECHEC, REMBOURSE/PARTIELLEMENT_REMBOURSE si nécessaire.
+- Le billet ne devient VALIDÉ POUR ENTRÉE que si la vente est payée.
+- Vérifier que le montant payé correspond au montant dû avant de finaliser une vente complète.
+- Utiliser une transaction SQL pour vente + paiement + billets + mise à jour du stock.
+
+M10 - Billets et impression
+- Identifiant de billet unique et non devinable de façon triviale.
+- Données imprimées : nom de l’événement, date/heure, lieu, catégorie, client si disponible, prix, identifiant et QR Code.
+- Générer un QR Code contenant uniquement un identifiant/jeton de billet, pas de mot de passe ni de données personnelles inutiles.
+- Prévoir aperçu et impression, ou export PDF si la bibliothèque choisie le permet.
+- La réimpression ne doit pas créer un nouveau billet ni invalider l’original.
+
+M11 - Contrôle d’accès
+- Rechercher le billet par identifiant et, si le matériel/la bibliothèque le permet, lire un QR Code par caméra.
+- Résultats : VALIDE, DEJA_UTILISE, NON_TROUVE, NON_PAYE, ANNULE, MAUVAIS_EVENEMENT.
+- Enregistrer date/heure et contrôleur pour chaque tentative pertinente.
+- Validation atomique : deux contrôleurs ne doivent pas pouvoir valider simultanément le même billet deux fois.
+- Un billet accepté passe à UTILISE et ne peut plus être accepté une seconde fois.
+
+M12 - Annulation et remboursement
+- Réservations non payées : annulation et libération du stock.
+- Vente payée : annulation/remboursement uniquement selon une règle définie par l’administrateur.
+- Enregistrer l’opération et son motif dans l’historique.
+- Ne jamais effacer silencieusement une vente payée.
+- Après remboursement intégral, billet non utilisable ; le stock est libéré seulement si la politique et l’état de l’événement le permettent.
+
+M13 - Statistiques et rapports
+- Ventes par événement et période.
+- Revenus encaissés par jour/mois/événement.
+- Billets vendus et restants.
+- Taux de remplissage = billets vendus / capacité disponible * 100.
+- Répartition par catégorie et méthode de paiement.
+- Export CSV en priorité ; PDF en option.
+- Exclure les paiements annulés/échoués des revenus encaissés.
+
+M14 - Historique/audit
+- Journaliser les opérations importantes : connexion si retenue, création/modification d’événement, vente, paiement, annulation, remboursement, contrôle de billet.
+- Champs : utilisateur, action, type d’objet, identifiant d’objet, date/heure, détails résumés.
+- Le journal ne doit pas contenir de mots de passe ni de données de paiement sensibles.
+
+M15 - Paramètres
+- Nom de l’organisation, devise, durée de réservation, règles de remboursement.
+- Valeurs par défaut simples.
+- Protéger les paramètres sensibles par le rôle ADMIN.
+
+5. RÈGLES MÉTIER OBLIGATOIRES
+RB01 : Un billet possède un identifiant unique.
+RB02 : Le stock ne peut jamais devenir négatif.
+RB03 : Une vente doit vérifier et réserver/décrémenter le stock atomiquement.
+RB04 : Une vente ne peut être finalisée si le montant payé n’est pas conforme à la règle de paiement.
+RB05 : Un billet non payé, annulé ou remboursé ne donne pas accès à l’événement.
+RB06 : Un billet ne peut être utilisé qu’une fois.
+RB07 : Le contrôleur doit être autorisé à accéder au module de contrôle, mais pas aux fonctions administratives.
+RB08 : Un événement annulé ou terminé n’accepte plus de vente.
+RB09 : Toute annulation/remboursement conserve un historique.
+RB10 : Les statistiques sont calculées depuis la base de données.
+RB11 : Les opérations multi-tables critiques utilisent une transaction JDBC (commit/rollback).
+RB12 : Les requêtes SQL utilisent PreparedStatement, jamais de concaténation de valeurs utilisateur.
+RB13 : Les dates/heures sont stockées avec un type adapté et affichées selon le format local.
+RB14 : Les erreurs sont présentées avec des messages compréhensibles, et les détails techniques vont dans les logs.
+
+6. CONCEPTION DE LA BASE DE DONNÉES (PROPOSITION À VALIDER)
+Utiliser PostgreSQL. Toutes les tables ont une clé primaire. Les relations doivent avoir des clés étrangères, contraintes CHECK/UNIQUE/NOT NULL appropriées et index sur les champs de recherche fréquents.
+
+Tables proposées :
+1. utilisateurs
+- id BIGSERIAL PK
+- nom_complet VARCHAR(120) NOT NULL
+- nom_utilisateur VARCHAR(60) UNIQUE NOT NULL
+- mot_de_passe_hash TEXT NOT NULL
+- role VARCHAR(20) NOT NULL CHECK role IN ('ADMIN','AGENT','CONTROLEUR')
+- actif BOOLEAN NOT NULL DEFAULT TRUE
+- cree_le TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+
+2. lieux
+- id BIGSERIAL PK
+- nom VARCHAR(120) NOT NULL
+- adresse TEXT
+- ville VARCHAR(100)
+- description TEXT
+
+3. salles
+- id BIGSERIAL PK
+- lieu_id BIGINT FK lieux(id)
+- nom VARCHAR(120) NOT NULL
+- capacite INTEGER NOT NULL CHECK capacite > 0
+- UNIQUE(lieu_id, nom)
+
+4. evenements
+- id BIGSERIAL PK
+- nom VARCHAR(180) NOT NULL
+- description TEXT
+- type VARCHAR(80) NOT NULL
+- salle_id BIGINT FK salles(id)
+- debut TIMESTAMPTZ NOT NULL
+- fin TIMESTAMPTZ
+- ouverture_vente TIMESTAMPTZ
+- fermeture_vente TIMESTAMPTZ
+- statut VARCHAR(20) NOT NULL
+- cree_par BIGINT FK utilisateurs(id)
+- cree_le TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+- CHECK fin IS NULL OR fin > debut
+
+5. categories_billets
+- id BIGSERIAL PK
+- evenement_id BIGINT FK evenements(id)
+- nom VARCHAR(80) NOT NULL
+- prix NUMERIC(12,2) NOT NULL CHECK prix >= 0
+- quantite_totale INTEGER NOT NULL CHECK quantite_totale >= 0
+- description TEXT
+- UNIQUE(evenement_id, nom)
+
+6. clients
+- id BIGSERIAL PK
+- nom_complet VARCHAR(160) NOT NULL
+- telephone VARCHAR(40)
+- email VARCHAR(180)
+- cree_le TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+- index téléphone/email si utile ; ne pas imposer email obligatoire.
+
+7. reservations
+- id BIGSERIAL PK
+- client_id BIGINT FK clients(id)
+- evenement_id BIGINT FK evenements(id)
+- cree_par BIGINT FK utilisateurs(id)
+- cree_le TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+- expire_le TIMESTAMPTZ NOT NULL
+- statut VARCHAR(20) NOT NULL
+- montant_total NUMERIC(12,2) NOT NULL CHECK montant_total >= 0
+
+8. reservation_lignes
+- id BIGSERIAL PK
+- reservation_id BIGINT FK reservations(id)
+- categorie_id BIGINT FK categories_billets(id)
+- quantite INTEGER NOT NULL CHECK quantite > 0
+- prix_unitaire NUMERIC(12,2) NOT NULL CHECK prix_unitaire >= 0
+- UNIQUE(reservation_id, categorie_id)
+
+9. ventes
+- id BIGSERIAL PK
+- client_id BIGINT FK clients(id)
+- evenement_id BIGINT FK evenements(id)
+- reservation_id BIGINT FK reservations(id), nullable/UNIQUE si une réservation ne peut être convertie qu’une fois
+- vendeur_id BIGINT FK utilisateurs(id)
+- numero_vente VARCHAR(40) UNIQUE NOT NULL
+- date_vente TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+- montant_total NUMERIC(12,2) NOT NULL CHECK montant_total >= 0
+- statut VARCHAR(25) NOT NULL
+
+10. vente_lignes
+- id BIGSERIAL PK
+- vente_id BIGINT FK ventes(id)
+- categorie_id BIGINT FK categories_billets(id)
+- quantite INTEGER NOT NULL CHECK quantite > 0
+- prix_unitaire NUMERIC(12,2) NOT NULL CHECK prix_unitaire >= 0
+- montant_ligne NUMERIC(12,2) NOT NULL CHECK montant_ligne >= 0
+
+11. paiements
+- id BIGSERIAL PK
+- vente_id BIGINT FK ventes(id)
+- montant NUMERIC(12,2) NOT NULL CHECK montant > 0
+- methode VARCHAR(30) NOT NULL
+- reference_paiement VARCHAR(120)
+- statut VARCHAR(25) NOT NULL
+- effectue_le TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+- enregistre_par BIGINT FK utilisateurs(id)
+
+12. billets
+- id BIGSERIAL PK
+- vente_id BIGINT FK ventes(id)
+- categorie_id BIGINT FK categories_billets(id)
+- code_unique UUID UNIQUE NOT NULL
+- statut VARCHAR(20) NOT NULL CHECK statut IN ('VALIDE','UTILISE','ANNULE','REMBOURSE')
+- cree_le TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+- utilise_le TIMESTAMPTZ
+- controle_par BIGINT FK utilisateurs(id)
+- IMPORTANT : générer une ligne billet par unité achetée, même si la vente a une quantité supérieure à 1.
+
+13. controles_acces
+- id BIGSERIAL PK
+- billet_id BIGINT FK billets(id)
+- controleur_id BIGINT FK utilisateurs(id)
+- evenement_id BIGINT FK evenements(id)
+- resultat VARCHAR(30) NOT NULL
+- controle_le TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+- details TEXT
+
+14. remboursements
+- id BIGSERIAL PK
+- paiement_id BIGINT FK paiements(id)
+- montant NUMERIC(12,2) NOT NULL CHECK montant > 0
+- motif TEXT NOT NULL
+- statut VARCHAR(20) NOT NULL
+- demande_par BIGINT FK utilisateurs(id)
+- traite_le TIMESTAMPTZ
+
+15. journal_activites
+- id BIGSERIAL PK
+- utilisateur_id BIGINT FK utilisateurs(id), nullable pour événements système
+- action VARCHAR(100) NOT NULL
+- type_objet VARCHAR(80)
+- objet_id BIGINT
+- details TEXT
+- cree_le TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+
+16. parametres
+- cle VARCHAR(100) PK
+- valeur TEXT NOT NULL
+- modifie_par BIGINT FK utilisateurs(id)
+- modifie_le TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+
+NOTE STOCK : ne pas modifier manuellement une colonne « disponible » depuis plusieurs endroits sans stratégie cohérente. Le stock restant peut être calculé à partir de quantités totales moins billets actifs vendus et réservations actives non expirées. Si un compteur est stocké pour la performance, sa mise à jour doit être atomique et testée. La méthode retenue doit être documentée dans le schéma SQL.
+
+NOTE VERSION INITIALE : ce modèle est une proposition riche. Avant de créer toutes les tables, valider le périmètre. Une version scolaire peut commencer avec utilisateurs, lieux, salles, événements, catégories_billets, clients, ventes, vente_lignes, paiements, billets, controles_acces, journal_activites. Ajouter réservations et remboursements dans une phase suivante si le délai est court.
+
+7. CONCEPTION DES INTERFACES
+Style général :
+- Violet principal : #6C3CE9 (ou #6D3FE8).
+- Violet foncé : #4C28A8.
+- Violet clair : #F1ECFF.
+- Fond : #F8F7FC.
+- Texte : #242033.
+- Succès : vert discret #2EAD69.
+- Erreur : rouge discret #D64545.
+- Police sans-serif simple, par exemple Segoe UI.
+- Boutons avec libellés clairs, champs alignés, tables sobres.
+- Une barre latérale violette, logo TIKE, nom du module actif et bouton de déconnexion.
+- Pas de dégradés lourds, pas de cartes excessives, pas de tableaux de bord surchargés.
+- Taille de fenêtre recommandée 1280x800, redimensionnable, centrée au lancement.
+- Respecter le contraste et permettre le clavier lorsque possible.
+
+Écrans :
+UI01 Connexion
+- Logo TIKE, nom d’utilisateur, mot de passe, bouton « Se connecter », message d’erreur.
+- Aucun lien d’inscription publique si les comptes sont créés par l’administrateur.
+
+UI02 Tableau de bord
+- Quelques indicateurs : événements en vente, billets vendus, revenus encaissés, réservations en attente.
+- Tableau des ventes récentes.
+- Graphique simple facultatif ; ne pas retarder les fonctions métier pour le graphique.
+
+UI03 Événements
+- Tableau : nom, date, salle, statut, actions.
+- Recherche et filtre de statut.
+- Bouton « Nouvel événement » et formulaire simple.
+
+UI04 Lieux et salles
+- Liste des lieux/salles et formulaires simples.
+- Affichage de la capacité.
+
+UI05 Catégories et tarifs
+- Liste des catégories par événement, prix et quantité totale.
+- Validation du prix et de la quantité.
+
+UI06 Clients
+- Tableau : nom, téléphone, email.
+- Recherche, ajouter, modifier, historique.
+
+UI07 Vente de billets
+- Sélecteur d’événement, client, catégorie, quantité.
+- Afficher stock disponible, prix unitaire et total calculé.
+- Bouton « Confirmer la vente » avec confirmation avant enregistrement.
+- Résultat clair en cas de stock insuffisant.
+
+UI08 Réservations
+- Liste des réservations, statut et date d’expiration.
+- Créer, confirmer/convertir, annuler.
+- L’expiration libère le stock.
+
+UI09 Billet/Impression
+- Aperçu compact du billet, QR Code, numéro, événement, date, catégorie et client.
+- Boutons « Imprimer » et « Réimprimer ».
+
+UI10 Contrôle d’accès
+- Champ pour saisir/coller le code du billet.
+- Bouton « Vérifier ».
+- Bouton d’activation caméra uniquement si la lecture caméra est effectivement implémentée.
+- Résultat très visible : billet valide, déjà utilisé, invalide ou non payé.
+- Confirmer l’événement contrôlé.
+
+UI11 Paiements et remboursements
+- Liste filtrable, détail de paiement, enregistrement d’un remboursement selon autorisation.
+- Pas de stockage de numéro de carte ou de secret Mobile Money.
+
+UI12 Statistiques et rapports
+- Filtre de période et d’événement.
+- Ventes, revenus encaissés, billets restants, taux de remplissage.
+- Export CSV ; PDF facultatif.
+
+UI13 Utilisateurs
+- Réservé à l’administrateur.
+- Créer/modifier/désactiver utilisateur, rôle.
+
+UI14 Historique
+- Tableau date, utilisateur, action, objet et détail.
+- Recherche/filtre.
+
+UI15 Paramètres
+- Paramètres généraux et durée de réservation.
+- Accès administrateur seulement.
+
+NAVIGATION PROPOSÉE
+Barre latérale : Tableau de bord, Événements, Lieux & salles, Clients, Ventes, Réservations, Contrôle d’accès, Rapports, Utilisateurs (admin), Historique, Paramètres, Déconnexion.
+Masquer ou désactiver les entrées interdites au rôle connecté.
+
+8. ARCHITECTURE JAVA PROPOSÉE
+Ne pas mélanger SQL, règles métier et composants Swing.
+Packages suggérés (à adapter au projet existant) :
+- app : démarrage, configuration et session courante
+- config : configuration de base de données
+- model : objets métier
+- dao : requêtes SQL et accès aux données
+- service : règles métier et transactions
+- ui : fenêtres/panels Swing
+- ui.components : composants réutilisables
+- util : validation, formatage, génération de codes/QR
+- resources : icônes et styles
+- db : schema.sql et données de démonstration
+Architecture conseillée : UI -> Service -> DAO -> PostgreSQL.
+Utiliser try-with-resources pour Connection/PreparedStatement/ResultSet.
+Gérer les exceptions avec messages utilisateur lisibles et logs techniques.
+Ne pas exécuter de requêtes longues sur l’Event Dispatch Thread ; si nécessaire, utiliser SwingWorker.
+Ne pas coder les identifiants de connexion à la base en dur dans le dépôt. Prévoir variables d’environnement ou fichier local ignoré par Git.
+
+9. TESTS ET ACCEPTATION
+- Connexion valide/invalide.
+- Permissions selon rôle.
+- Création/modification d’événement et validations de dates.
+- Stock insuffisant : vente refusée sans données partielles.
+- Vente réussie : paiement et billets créés, stock cohérent.
+- Erreur pendant vente : rollback complet.
+- Billet impayé/annulé : entrée refusée.
+- Premier contrôle : accepté et marqué utilisé.
+- Deuxième contrôle du même billet : refusé.
+- Réservation expirée : stock libéré une seule fois.
+- Statistiques cohérentes avec les ventes réelles.
+- Aucune requête SQL par concaténation de saisie utilisateur.
+- Mots de passe non stockés en clair.
+- Test sur une base de données vide avec script d’initialisation.
+
+10. DÉCISIONS À VALIDER AVANT LE DÉVELOPPEMENT
+- Le projet Java existe-t-il déjà et utilise-t-il Maven ou Gradle ?
+- Version de Java disponible.
+- PostgreSQL est-il imposé ou MySQL est-il acceptable ?
+- Types d’événements : tous types ou seulement concerts/conférences ?
+- Places : places libres d’abord ou places numérotées ?
+- Réservations : incluses dès la version 1 ou phase 2 ?
+- Contrôle QR : saisie du code d’abord, caméra ensuite si possible ?
+- Impression : impression Java, PDF, ou les deux ?
+- Le paiement est-il seulement enregistré dans l’application, sans intégration réelle ?
+- Délai et nombre de membres du groupe.
+
+FIN DU DOCUMENT DE CONCEPTION

@@ -6,15 +6,18 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.mycompany.tike.config.DatabaseConfig;
+import com.mycompany.tike.dao.AccessControlDao;
 import com.mycompany.tike.dao.CatalogDao;
 import com.mycompany.tike.dao.ReportingDao;
 import com.mycompany.tike.dao.SalesDao;
 import com.mycompany.tike.model.Client;
+import com.mycompany.tike.model.AccessControlOutcome;
 import com.mycompany.tike.model.Event;
 import com.mycompany.tike.model.EventStatus;
 import com.mycompany.tike.model.PaymentMethod;
 import com.mycompany.tike.model.Room;
 import com.mycompany.tike.model.SaleLineRequest;
+import com.mycompany.tike.model.SaleHistoryItem;
 import com.mycompany.tike.model.SaleRequest;
 import com.mycompany.tike.model.Ticket;
 import com.mycompany.tike.model.TicketCategory;
@@ -41,15 +44,17 @@ import org.junit.jupiter.api.Test;
 class SalesDatabaseIntegrationTest {
     private final CatalogDao catalogDao = new CatalogDao();
     private final SalesDao salesDao = new SalesDao();
+    private final AccessControlService accessControlService = new AccessControlService(new AccessControlDao());
 
     @Test
     void salePaymentTicketsRollbackAndConcurrentStockAreAtomic() throws Exception {
         Assumptions.assumeTrue(
                 "1".equals(System.getenv("TIKE_RUN_DB_INTEGRATION")),
-                "Définir TIKE_RUN_DB_INTEGRATION=1 pour lancer ce test avec PostgreSQL.");
+                "Définir TIKE_RUN_DB_INTEGRATION=1 pour lancer ce test avec SQLite.");
 
         String suffix = UUID.randomUUID().toString().replace("-", "").substring(0, 10);
         long sellerId = 0;
+        long controllerId = 0;
         Venue venue = null;
         Room room = null;
         Event event = null;
@@ -57,8 +62,12 @@ class SalesDatabaseIntegrationTest {
         ExecutorService executor = Executors.newFixedThreadPool(2);
         try {
             sellerId = createSeller(suffix);
+            controllerId = createController(suffix);
             UserSession seller = UserSession.authenticated(
                     new User(sellerId, "Agent intégration", "it.sales." + suffix, UserRole.AGENT, true));
+            UserSession controller = UserSession.authenticated(
+                    new User(controllerId, "Contrôleur intégration", "it.control." + suffix,
+                            UserRole.CONTROLEUR, true));
             venue = catalogDao.saveVenue(new Venue(0, "IT ventes " + suffix, null, "IT", null));
             room = catalogDao.saveRoom(new Room(0, venue.id(), venue.name(), "IT ventes " + suffix, 3));
             LocalDateTime startsAt = LocalDateTime.now().plusDays(30).withSecond(0).withNano(0);
@@ -80,7 +89,11 @@ class SalesDatabaseIntegrationTest {
             var initial = salesDao.createSale(new SaleRequest(
                     savedEventId, savedClientId, List.of(new SaleLineRequest(savedCategoryId, 2)),
                     new BigDecimal("2500.00"), PaymentMethod.ESPECES, null), savedSellerId);
-            assertEquals(new BigDecimal("2500.00"), initial.total());
+            List<SaleHistoryItem> recordedSales = new SalesService(salesDao).listSales(seller);
+            SaleHistoryItem recordedSale = recordedSales.stream()
+                    .filter(sale -> sale.saleNumber().equals(initial.number())).findFirst().orElseThrow();
+            assertEquals("IT client " + suffix, recordedSale.clientName());
+            assertEquals(0, new BigDecimal("2500.00").compareTo(initial.total()));
             assertEquals(2, initial.ticketCount());
             assertEquals(2, count("SELECT COUNT(*) FROM billets WHERE vente_id = ?", initial.id()));
             assertEquals(1, count("SELECT COUNT(*) FROM paiements WHERE vente_id = ? AND statut = 'PAYE'", initial.id()));
@@ -91,6 +104,10 @@ class SalesDatabaseIntegrationTest {
             assertEquals("IT client " + suffix, issuedTickets.get(0).customerName());
             assertEquals(issuedTickets, new SalesService(salesDao)
                     .findPaidSaleTickets(seller, initial.number().toLowerCase(java.util.Locale.ROOT)));
+            assertEquals(AccessControlOutcome.VALIDE, accessControlService
+                    .check(controller, savedEventId, issuedTickets.get(0).uniqueCode()).outcome());
+            assertEquals(AccessControlOutcome.DEJA_UTILISE, accessControlService
+                    .check(controller, savedEventId, issuedTickets.get(0).uniqueCode()).outcome());
             assertEquals(2, count("SELECT COUNT(*) FROM billets WHERE vente_id = ?", initial.id()));
             assertEquals(1, catalogDao.findCategories(savedEventId).get(0).availableQuantity());
             ReportingDao reportingDao = new ReportingDao();
@@ -115,6 +132,12 @@ class SalesDatabaseIntegrationTest {
             assertTrue(metrics.activeEvents() >= 1);
             assertTrue(metrics.soldTickets() >= 2);
             assertTrue(metrics.revenue().compareTo(new BigDecimal("2500.00")) >= 0);
+            var monthlyRevenue = reportingDao.monthlyRevenue();
+            assertEquals(6, monthlyRevenue.size());
+            assertTrue(monthlyRevenue.get(5).value().compareTo(new BigDecimal("2500.00")) >= 0);
+            var eventDistribution = reportingDao.ticketDistributionByEvent();
+            assertEquals(metrics.soldTickets(), eventDistribution.stream()
+                    .mapToLong(value -> value.value().longValue()).sum());
             client = new SalesService(salesDao).saveClient(
                     seller, new Client(savedClientId, "IT client modifié " + suffix, client.phone(), null));
 
@@ -154,7 +177,7 @@ class SalesDatabaseIntegrationTest {
             assertEquals(2, salesDao.findClientHistory(savedClientId).size());
             assertEquals(3, count("""
                     SELECT COUNT(*) FROM billets b JOIN ventes v ON v.id = b.vente_id
-                    WHERE v.evenement_id = ? AND v.statut = 'PAYEE' AND b.statut = 'VALIDE'
+                    WHERE v.evenement_id = ? AND v.statut = 'PAYEE' AND b.statut IN ('VALIDE', 'UTILISE')
                     """, savedEventId));
 
             Event cancelledEvent = catalogDao.saveEvent(new Event(
@@ -168,7 +191,7 @@ class SalesDatabaseIntegrationTest {
             deleteEvent(cancelledEvent.id());
         } finally {
             executor.shutdownNow();
-            cleanup(sellerId, client, event, room, venue);
+            cleanup(sellerId, controllerId, client, event, room, venue);
         }
     }
 
@@ -185,14 +208,23 @@ class SalesDatabaseIntegrationTest {
     }
 
     private static long createSeller(String suffix) throws SQLException {
+        return createUser(suffix, "sales", "AGENT", "Agent intégration");
+    }
+
+    private static long createController(String suffix) throws SQLException {
+        return createUser(suffix, "control", "CONTROLEUR", "Contrôleur intégration");
+    }
+
+    private static long createUser(String suffix, String purpose, String role, String fullName) throws SQLException {
         try (Connection connection = DatabaseConfig.getConnection();
              PreparedStatement statement = connection.prepareStatement("""
                      INSERT INTO utilisateurs (nom_complet, nom_utilisateur, mot_de_passe_hash, role, actif)
-                     VALUES (?, ?, 'test-only-not-a-password', 'AGENT', TRUE)
+                     VALUES (?, ?, 'test-only-not-a-password', ?, TRUE)
                      RETURNING id
                      """)) {
-            statement.setString(1, "Agent intégration " + suffix);
-            statement.setString(2, "it.sales." + suffix);
+            statement.setString(1, fullName + " " + suffix);
+            statement.setString(2, "it." + purpose + "." + suffix);
+            statement.setString(3, role);
             try (ResultSet result = statement.executeQuery()) {
                 result.next();
                 return result.getLong(1);
@@ -219,10 +251,16 @@ class SalesDatabaseIntegrationTest {
         }
     }
 
-    private static void cleanup(long sellerId, Client client, Event event, Room room, Venue venue)
+    private static void cleanup(
+            long sellerId, long controllerId, Client client, Event event, Room room, Venue venue)
             throws SQLException {
         try (Connection connection = DatabaseConfig.getConnection()) {
             if (event != null) {
+                try (PreparedStatement statement = connection.prepareStatement(
+                        "DELETE FROM controles_acces WHERE evenement_id = ?")) {
+                    statement.setLong(1, event.id());
+                    statement.executeUpdate();
+                }
                 try (PreparedStatement statement = connection.prepareStatement("""
                         DELETE FROM billets WHERE evenement_id = ?
                         """)) {
@@ -275,14 +313,17 @@ class SalesDatabaseIntegrationTest {
                     statement.executeUpdate();
                 }
             }
-            if (sellerId != 0) {
+            if (sellerId != 0 || controllerId != 0) {
                 try (PreparedStatement statement = connection.prepareStatement(
-                        "DELETE FROM journal_activites WHERE utilisateur_id = ?")) {
+                        "DELETE FROM journal_activites WHERE utilisateur_id IN (?, ?)")) {
                     statement.setLong(1, sellerId);
+                    statement.setLong(2, controllerId);
                     statement.executeUpdate();
                 }
-                try (PreparedStatement statement = connection.prepareStatement("DELETE FROM utilisateurs WHERE id = ?")) {
+                try (PreparedStatement statement = connection.prepareStatement(
+                        "DELETE FROM utilisateurs WHERE id IN (?, ?)")) {
                     statement.setLong(1, sellerId);
+                    statement.setLong(2, controllerId);
                     statement.executeUpdate();
                 }
             }

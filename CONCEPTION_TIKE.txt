@@ -15,7 +15,7 @@ IMPORTANT POUR L’AGENT DE DÉVELOPPEMENT
 Nom de l’application : TIKE
 Slogan proposé : « Un billet, un accès, une expérience. »
 Type : application de bureau Java Swing.
-Base de données : PostgreSQL.
+Base de données : SQLite embarquée, fichier local par poste.
 Accès aux données : JDBC.
 Domaine : vente/réservation de billets et contrôle d’accès aux événements.
 Langue de l’interface : français.
@@ -173,154 +173,13 @@ RB13 : Les dates/heures sont stockées avec un type adapté et affichées selon 
 RB14 : Les erreurs sont présentées avec des messages compréhensibles, et les détails techniques vont dans les logs.
 
 6. CONCEPTION DE LA BASE DE DONNÉES (PROPOSITION À VALIDER)
-Utiliser PostgreSQL. Toutes les tables ont une clé primaire. Les relations doivent avoir des clés étrangères, contraintes CHECK/UNIQUE/NOT NULL appropriées et index sur les champs de recherche fréquents.
+Utiliser SQLite. Toutes les tables ont une clé primaire. Les relations doivent avoir des clés étrangères, contraintes CHECK/UNIQUE/NOT NULL appropriées et index sur les champs de recherche fréquents.
 
-Tables proposées :
-1. utilisateurs
-- id BIGSERIAL PK
-- nom_complet VARCHAR(120) NOT NULL
-- nom_utilisateur VARCHAR(60) UNIQUE NOT NULL
-- mot_de_passe_hash TEXT NOT NULL
-- role VARCHAR(20) NOT NULL CHECK role IN ('ADMIN','AGENT','CONTROLEUR')
-- actif BOOLEAN NOT NULL DEFAULT TRUE
-- cree_le TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+Le schéma effectivement utilisé et initialisé par l'application est `src/main/resources/schema-sqlite.sql`. Il définit les clés entières `INTEGER PRIMARY KEY AUTOINCREMENT`, les relations, les contraintes, les index et la vue de stock. Les identifiants de billets sont stockés comme UUID texte ; les dates/heures sont stockées sous forme ISO locale.
 
-2. lieux
-- id BIGSERIAL PK
-- nom VARCHAR(120) NOT NULL
-- adresse TEXT
-- ville VARCHAR(100)
-- description TEXT
+Les tables métier sont : utilisateurs, lieux, salles, evenements, categories_billets, clients, ventes, vente_lignes, paiements, remboursements, billets, reservations, reservation_lignes, controles_acces et journal_activites. Le schéma versionné fait autorité afin que cette description reste cohérente avec l'application.
 
-3. salles
-- id BIGSERIAL PK
-- lieu_id BIGINT FK lieux(id)
-- nom VARCHAR(120) NOT NULL
-- capacite INTEGER NOT NULL CHECK capacite > 0
-- UNIQUE(lieu_id, nom)
-
-4. evenements
-- id BIGSERIAL PK
-- nom VARCHAR(180) NOT NULL
-- description TEXT
-- type VARCHAR(80) NOT NULL
-- salle_id BIGINT FK salles(id)
-- debut TIMESTAMPTZ NOT NULL
-- fin TIMESTAMPTZ
-- ouverture_vente TIMESTAMPTZ
-- fermeture_vente TIMESTAMPTZ
-- statut VARCHAR(20) NOT NULL
-- cree_par BIGINT FK utilisateurs(id)
-- cree_le TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-- CHECK fin IS NULL OR fin > debut
-
-5. categories_billets
-- id BIGSERIAL PK
-- evenement_id BIGINT FK evenements(id)
-- nom VARCHAR(80) NOT NULL
-- prix NUMERIC(12,2) NOT NULL CHECK prix >= 0
-- quantite_totale INTEGER NOT NULL CHECK quantite_totale >= 0
-- description TEXT
-- UNIQUE(evenement_id, nom)
-
-6. clients
-- id BIGSERIAL PK
-- nom_complet VARCHAR(160) NOT NULL
-- telephone VARCHAR(40)
-- email VARCHAR(180)
-- cree_le TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-- index téléphone/email si utile ; ne pas imposer email obligatoire.
-
-7. reservations
-- id BIGSERIAL PK
-- client_id BIGINT FK clients(id)
-- evenement_id BIGINT FK evenements(id)
-- cree_par BIGINT FK utilisateurs(id)
-- cree_le TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-- expire_le TIMESTAMPTZ NOT NULL
-- statut VARCHAR(20) NOT NULL
-- montant_total NUMERIC(12,2) NOT NULL CHECK montant_total >= 0
-
-8. reservation_lignes
-- id BIGSERIAL PK
-- reservation_id BIGINT FK reservations(id)
-- categorie_id BIGINT FK categories_billets(id)
-- quantite INTEGER NOT NULL CHECK quantite > 0
-- prix_unitaire NUMERIC(12,2) NOT NULL CHECK prix_unitaire >= 0
-- UNIQUE(reservation_id, categorie_id)
-
-9. ventes
-- id BIGSERIAL PK
-- client_id BIGINT FK clients(id)
-- evenement_id BIGINT FK evenements(id)
-- reservation_id BIGINT FK reservations(id), nullable/UNIQUE si une réservation ne peut être convertie qu’une fois
-- vendeur_id BIGINT FK utilisateurs(id)
-- numero_vente VARCHAR(40) UNIQUE NOT NULL
-- date_vente TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-- montant_total NUMERIC(12,2) NOT NULL CHECK montant_total >= 0
-- statut VARCHAR(25) NOT NULL
-
-10. vente_lignes
-- id BIGSERIAL PK
-- vente_id BIGINT FK ventes(id)
-- categorie_id BIGINT FK categories_billets(id)
-- quantite INTEGER NOT NULL CHECK quantite > 0
-- prix_unitaire NUMERIC(12,2) NOT NULL CHECK prix_unitaire >= 0
-- montant_ligne NUMERIC(12,2) NOT NULL CHECK montant_ligne >= 0
-
-11. paiements
-- id BIGSERIAL PK
-- vente_id BIGINT FK ventes(id)
-- montant NUMERIC(12,2) NOT NULL CHECK montant > 0
-- methode VARCHAR(30) NOT NULL
-- reference_paiement VARCHAR(120)
-- statut VARCHAR(25) NOT NULL
-- effectue_le TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-- enregistre_par BIGINT FK utilisateurs(id)
-
-12. billets
-- id BIGSERIAL PK
-- vente_id BIGINT FK ventes(id)
-- categorie_id BIGINT FK categories_billets(id)
-- code_unique UUID UNIQUE NOT NULL
-- statut VARCHAR(20) NOT NULL CHECK statut IN ('VALIDE','UTILISE','ANNULE','REMBOURSE')
-- cree_le TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-- utilise_le TIMESTAMPTZ
-- controle_par BIGINT FK utilisateurs(id)
-- IMPORTANT : générer une ligne billet par unité achetée, même si la vente a une quantité supérieure à 1.
-
-13. controles_acces
-- id BIGSERIAL PK
-- billet_id BIGINT FK billets(id)
-- controleur_id BIGINT FK utilisateurs(id)
-- evenement_id BIGINT FK evenements(id)
-- resultat VARCHAR(30) NOT NULL
-- controle_le TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-- details TEXT
-
-14. remboursements
-- id BIGSERIAL PK
-- paiement_id BIGINT FK paiements(id)
-- montant NUMERIC(12,2) NOT NULL CHECK montant > 0
-- motif TEXT NOT NULL
-- statut VARCHAR(20) NOT NULL
-- demande_par BIGINT FK utilisateurs(id)
-- traite_le TIMESTAMPTZ
-
-15. journal_activites
-- id BIGSERIAL PK
-- utilisateur_id BIGINT FK utilisateurs(id), nullable pour événements système
-- action VARCHAR(100) NOT NULL
-- type_objet VARCHAR(80)
-- objet_id BIGINT
-- details TEXT
-- cree_le TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
-
-16. parametres
-- cle VARCHAR(100) PK
-- valeur TEXT NOT NULL
-- modifie_par BIGINT FK utilisateurs(id)
-- modifie_le TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+IMPORTANT : générer une ligne billet par unité achetée, même si la vente a une quantité supérieure à 1.
 
 NOTE STOCK : ne pas modifier manuellement une colonne « disponible » depuis plusieurs endroits sans stratégie cohérente. Le stock restant peut être calculé à partir de quantités totales moins billets actifs vendus et réservations actives non expirées. Si un compteur est stocké pour la performance, sa mise à jour doit être atomique et testée. La méthode retenue doit être documentée dans le schéma SQL.
 
@@ -428,12 +287,12 @@ Packages suggérés (à adapter au projet existant) :
 - ui.components : composants réutilisables
 - util : validation, formatage, génération de codes/QR
 - resources : icônes et styles
-- db : schema.sql et données de démonstration
-Architecture conseillée : UI -> Service -> DAO -> PostgreSQL.
+- db : schema-sqlite.sql et données de démonstration
+Architecture conseillée : UI -> Service -> DAO -> SQLite.
 Utiliser try-with-resources pour Connection/PreparedStatement/ResultSet.
 Gérer les exceptions avec messages utilisateur lisibles et logs techniques.
 Ne pas exécuter de requêtes longues sur l’Event Dispatch Thread ; si nécessaire, utiliser SwingWorker.
-Ne pas coder les identifiants de connexion à la base en dur dans le dépôt. Prévoir variables d’environnement ou fichier local ignoré par Git.
+Ne pas coder de chemin de base en dur ; utiliser le dossier local de l’utilisateur, avec `TIKE_DB_PATH` comme réglage facultatif.
 
 9. TESTS ET ACCEPTATION
 - Connexion valide/invalide.
@@ -454,7 +313,7 @@ Ne pas coder les identifiants de connexion à la base en dur dans le dépôt. Pr
 10. DÉCISIONS À VALIDER AVANT LE DÉVELOPPEMENT
 - Le projet Java existe-t-il déjà et utilise-t-il Maven ou Gradle ?
 - Version de Java disponible.
-- PostgreSQL est-il imposé ou MySQL est-il acceptable ?
+- Le fichier SQLite doit-il rester dans l'emplacement local par défaut ou être déplacé par `TIKE_DB_PATH` ?
 - Types d’événements : tous types ou seulement concerts/conférences ?
 - Places : places libres d’abord ou places numérotées ?
 - Réservations : incluses dès la version 1 ou phase 2 ?

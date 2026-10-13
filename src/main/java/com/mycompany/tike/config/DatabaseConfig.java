@@ -7,59 +7,93 @@ import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
-import java.util.Properties;
+import java.sql.Statement;
+import org.sqlite.SQLiteConfig;
 
 public final class DatabaseConfig {
-    private static final String DEFAULT_URL = "jdbc:postgresql://localhost:5432/tike";
-    private static final Properties LOCAL_PROPERTIES = loadLocalProperties();
+    private static final String SQLITE_DRIVER = "org.sqlite.JDBC";
+    private static final String SQLITE_SCHEMA = "/schema-sqlite.sql";
+    private static boolean initialized;
 
     private DatabaseConfig() {
     }
 
+    public static Path getDatabasePath() {
+        String configuredPath = System.getenv("TIKE_DB_PATH");
+        if (configuredPath != null && !configuredPath.isBlank()) {
+            return Path.of(configuredPath).toAbsolutePath().normalize();
+        }
+        String localAppData = System.getenv("LOCALAPPDATA");
+        Path dataDirectory = localAppData == null || localAppData.isBlank()
+                ? Path.of(System.getProperty("user.home"), ".local", "share")
+                : Path.of(localAppData);
+        return dataDirectory.resolve("TIKE").resolve("tike.db");
+    }
+
     public static String getUrl() {
-        return getSetting("DB_URL", DEFAULT_URL);
-    }
-
-    public static String getUser() {
-        return getSetting("DB_USER", null);
-    }
-
-    private static String getPassword() {
-        return getSetting("DB_PASSWORD", null);
+        return "jdbc:sqlite:" + getDatabasePath();
     }
 
     public static Connection getConnection() throws SQLException {
-        String user = getUser();
-        String password = getPassword();
-        if (user == null || user.isBlank() || password == null || password.isBlank()) {
-            throw new IllegalStateException(
-                    "Configurez DB_USER et DB_PASSWORD dans db.properties ou dans les variables d'environnement.");
-        }
-        return DriverManager.getConnection(getUrl(), user, password);
-    }
-
-    private static String getSetting(String key, String defaultValue) {
-        String environmentValue = System.getenv(key);
-        if (environmentValue != null && !environmentValue.isBlank()) {
-            return environmentValue;
-        }
-        String localValue = LOCAL_PROPERTIES.getProperty(key);
-        if (localValue != null && !localValue.isBlank()) {
-            return localValue;
-        }
-        return defaultValue;
-    }
-
-    private static Properties loadLocalProperties() {
-        Properties properties = new Properties();
-        Path propertiesFile = Path.of("db.properties");
-        if (Files.exists(propertiesFile)) {
-            try (InputStream input = Files.newInputStream(propertiesFile)) {
-                properties.load(input);
+        synchronized (DatabaseConfig.class) {
+            Path databasePath = getDatabasePath();
+            try {
+                Files.createDirectories(databasePath.getParent());
             } catch (IOException e) {
-                throw new IllegalStateException("Impossible de lire le fichier local db.properties.", e);
+                throw new SQLException("Impossible de créer le dossier de la base TIKE.", e);
             }
+            Connection connection = openSqliteConnection(databasePath);
+            if (!initialized) {
+                try {
+                    initializeSchema(connection);
+                    initialized = true;
+                } catch (SQLException e) {
+                    connection.close();
+                    throw e;
+                }
+            }
+            return connection;
         }
-        return properties;
     }
+
+    public static Connection openSqliteConnection(Path path) throws SQLException {
+        try {
+            Class.forName(SQLITE_DRIVER);
+        } catch (ClassNotFoundException e) {
+            throw new SQLException("Le pilote SQLite n'est pas disponible.", e);
+        }
+        SQLiteConfig config = new SQLiteConfig();
+        config.enforceForeignKeys(true);
+        config.setBusyTimeout(5000);
+        config.setTransactionMode(SQLiteConfig.TransactionMode.IMMEDIATE);
+        Connection connection = DriverManager.getConnection(
+                "jdbc:sqlite:" + path.toAbsolutePath().normalize(), config.toProperties());
+        try (Statement statement = connection.createStatement()) {
+            statement.execute("PRAGMA foreign_keys = ON");
+            statement.execute("PRAGMA busy_timeout = 5000");
+        } catch (SQLException e) {
+            connection.close();
+            throw e;
+        }
+        return connection;
+    }
+
+    public static void initializeSchema(Connection connection) throws SQLException {
+        try (InputStream input = DatabaseConfig.class.getResourceAsStream(SQLITE_SCHEMA)) {
+            if (input == null) {
+                throw new SQLException("Le schéma SQLite est absent du paquet TIKE.");
+            }
+            String schema = new String(input.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+            try (Statement statement = connection.createStatement()) {
+                for (String sql : schema.split(";")) {
+                    if (!sql.isBlank()) {
+                        statement.execute(sql);
+                    }
+                }
+            }
+        } catch (IOException e) {
+            throw new SQLException("Impossible de lire le schéma SQLite.", e);
+        }
+    }
+
 }

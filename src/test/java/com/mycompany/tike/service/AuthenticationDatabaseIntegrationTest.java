@@ -23,7 +23,7 @@ class AuthenticationDatabaseIntegrationTest {
     void databaseAuthenticationUserManagementAndRoleRestrictionsWork() throws SQLException {
         Assumptions.assumeTrue(
                 "1".equals(System.getenv("TIKE_RUN_DB_INTEGRATION")),
-                "Définir TIKE_RUN_DB_INTEGRATION=1 pour lancer ce test avec PostgreSQL.");
+                "Définir TIKE_RUN_DB_INTEGRATION=1 pour lancer ce test avec SQLite.");
 
         String suffix = UUID.randomUUID().toString().replace("-", "").substring(0, 10);
         String adminUsername = "it.admin." + suffix;

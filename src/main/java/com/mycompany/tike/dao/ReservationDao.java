@@ -51,8 +51,8 @@ public final class ReservationDao {
                 try (PreparedStatement statement = connection.prepareStatement("""
                         INSERT INTO reservations
                             (numero_reservation, evenement_id, client_id, cree_par, cree_le, expire_le, statut)
-                        VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP,
-                                LEAST(CURRENT_TIMESTAMP + (? * INTERVAL '1 hour'),
+                        VALUES (?, ?, ?, ?, datetime('now', 'localtime'),
+                                MIN(datetime('now', 'localtime', '+' || ? || ' hours'),
                                       (SELECT debut FROM evenements WHERE id = ?)),
                                 'EN_ATTENTE')
                         RETURNING id, cree_le, expire_le
@@ -220,7 +220,7 @@ public final class ReservationDao {
                 try (PreparedStatement statement = connection.prepareStatement("""
                         UPDATE reservations
                         SET statut = 'CONFIRMEE', vente_id = ?
-                        WHERE id = ? AND statut = 'EN_ATTENTE' AND expire_le > CURRENT_TIMESTAMP
+                        WHERE id = ? AND statut = 'EN_ATTENTE' AND expire_le > datetime('now', 'localtime')
                         """)) {
                     statement.setLong(1, sale.id());
                     statement.setLong(2, reservationId);
@@ -244,7 +244,7 @@ public final class ReservationDao {
         try (Connection connection = DatabaseConfig.getConnection();
              PreparedStatement statement = connection.prepareStatement("""
                      UPDATE reservations SET statut = 'EXPIREE'
-                     WHERE statut = 'EN_ATTENTE' AND expire_le <= CURRENT_TIMESTAMP
+                     WHERE statut = 'EN_ATTENTE' AND expire_le <= datetime('now', 'localtime')
                      """)) {
             statement.executeUpdate();
         }
@@ -253,7 +253,7 @@ public final class ReservationDao {
     static void expireForEvent(Connection connection, long eventId) throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement("""
                 UPDATE reservations SET statut = 'EXPIREE'
-                WHERE evenement_id = ? AND statut = 'EN_ATTENTE' AND expire_le <= CURRENT_TIMESTAMP
+                WHERE evenement_id = ? AND statut = 'EN_ATTENTE' AND expire_le <= datetime('now', 'localtime')
                 """)) {
             statement.setLong(1, eventId);
             statement.executeUpdate();
@@ -268,7 +268,7 @@ public final class ReservationDao {
                 JOIN reservations r ON r.id = rl.reservation_id
                 WHERE rl.categorie_id = ?
                   AND r.statut = 'EN_ATTENTE'
-                  AND r.expire_le > CURRENT_TIMESTAMP
+                  AND r.expire_le > datetime('now', 'localtime')
                   AND (? IS NULL OR r.id <> ?)
                 """)) {
             statement.setLong(1, categoryId);
@@ -292,7 +292,6 @@ public final class ReservationDao {
                 SELECT nom, prix, quantite_totale
                 FROM categories_billets
                 WHERE id = ? AND evenement_id = ?
-                FOR UPDATE
                 """)) {
             statement.setLong(1, line.categoryId());
             statement.setLong(2, eventId);
@@ -352,8 +351,7 @@ public final class ReservationDao {
         try (PreparedStatement statement = connection.prepareStatement("""
                 SELECT id, numero_reservation, evenement_id, client_id, cree_le, expire_le
                 FROM reservations
-                WHERE id = ? AND statut = 'EN_ATTENTE' AND expire_le > CURRENT_TIMESTAMP
-                FOR UPDATE
+                WHERE id = ? AND statut = 'EN_ATTENTE' AND expire_le > datetime('now', 'localtime')
                 """)) {
             statement.setLong(1, reservationId);
             try (ResultSet result = statement.executeQuery()) {
@@ -393,7 +391,6 @@ public final class ReservationDao {
                 SELECT statut, debut
                 FROM evenements
                 WHERE id = ?
-                FOR UPDATE
                 """)) {
             statement.setLong(1, eventId);
             try (ResultSet result = statement.executeQuery()) {
@@ -414,7 +411,7 @@ public final class ReservationDao {
 
     private static void lockEvent(Connection connection, long eventId) throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement(
-                "SELECT id FROM evenements WHERE id = ? FOR UPDATE")) {
+                "SELECT id FROM evenements WHERE id = ?")) {
             statement.setLong(1, eventId);
             try (ResultSet result = statement.executeQuery()) {
                 if (!result.next()) {
@@ -439,7 +436,7 @@ public final class ReservationDao {
 
     private static void ensureClientExists(Connection connection, long clientId) throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement(
-                "SELECT id FROM clients WHERE id = ? FOR KEY SHARE")) {
+                "SELECT id FROM clients WHERE id = ?")) {
             statement.setLong(1, clientId);
             try (ResultSet result = statement.executeQuery()) {
                 if (!result.next()) {
@@ -465,7 +462,7 @@ public final class ReservationDao {
     private static void expireAll(Connection connection) throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement("""
                 UPDATE reservations SET statut = 'EXPIREE'
-                WHERE statut = 'EN_ATTENTE' AND expire_le <= CURRENT_TIMESTAMP
+                WHERE statut = 'EN_ATTENTE' AND expire_le <= datetime('now', 'localtime')
                 """)) {
             statement.executeUpdate();
         }

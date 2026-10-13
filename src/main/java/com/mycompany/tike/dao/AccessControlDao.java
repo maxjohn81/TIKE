@@ -5,6 +5,7 @@ import com.mycompany.tike.model.AccessControlEvent;
 import com.mycompany.tike.model.AccessControlOutcome;
 import com.mycompany.tike.model.AccessControlResult;
 import com.mycompany.tike.model.EventStatus;
+import com.mycompany.tike.model.SaleHistoryItem;
 import java.math.BigDecimal;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -37,6 +38,64 @@ public final class AccessControlDao {
             }
         }
         return events;
+    }
+
+    public List<SaleHistoryItem> findSalesForEvent(long eventId) throws SQLException {
+        List<SaleHistoryItem> sales = new ArrayList<>();
+        try (Connection connection = DatabaseConfig.getConnection();
+             PreparedStatement statement = connection.prepareStatement("""
+                     SELECT v.numero_vente, e.nom AS evenement,
+                            COALESCE(cl.nom_complet, 'Client non renseigné') AS client,
+                            v.date_vente, v.montant_total, v.statut, COUNT(b.id) AS nombre_billets
+                     FROM ventes v
+                     JOIN evenements e ON e.id = v.evenement_id
+                     LEFT JOIN clients cl ON cl.id = v.client_id
+                     LEFT JOIN billets b ON b.vente_id = v.id
+                     WHERE v.evenement_id = ?
+                     GROUP BY v.id, e.nom, cl.nom_complet
+                     ORDER BY v.date_vente DESC, v.id DESC
+                     """)) {
+            statement.setLong(1, eventId);
+            try (ResultSet result = statement.executeQuery()) {
+                while (result.next()) {
+                    Timestamp date = result.getTimestamp("date_vente");
+                    sales.add(new SaleHistoryItem(
+                            result.getString("numero_vente"),
+                            result.getString("evenement"),
+                            result.getString("client"),
+                            date == null ? null : date.toLocalDateTime(),
+                            result.getBigDecimal("montant_total"),
+                            result.getString("statut"),
+                            result.getInt("nombre_billets")));
+                }
+            }
+        }
+        return sales;
+    }
+
+    public List<TicketChoice> findTicketsForSale(long eventId, String saleNumber) throws SQLException {
+        List<TicketChoice> tickets = new ArrayList<>();
+        try (Connection connection = DatabaseConfig.getConnection();
+             PreparedStatement statement = connection.prepareStatement("""
+                     SELECT b.code_unique, cb.nom AS categorie, b.statut
+                     FROM billets b
+                     JOIN ventes v ON v.id = b.vente_id
+                     JOIN categories_billets cb ON cb.id = b.categorie_id
+                     WHERE b.evenement_id = ? AND v.numero_vente = ?
+                     ORDER BY b.id
+                     """)) {
+            statement.setLong(1, eventId);
+            statement.setString(2, saleNumber);
+            try (ResultSet result = statement.executeQuery()) {
+                while (result.next()) {
+                    tickets.add(new TicketChoice(
+                            result.getString("code_unique"),
+                            result.getString("categorie"),
+                            result.getString("statut")));
+                }
+            }
+        }
+        return tickets;
     }
 
     public AccessControlResult check(long eventId, UUID ticketCode, long controllerId) throws SQLException {
@@ -82,7 +141,7 @@ public final class AccessControlDao {
                     outcome = AccessControlOutcome.VALIDE;
                     try (PreparedStatement update = connection.prepareStatement("""
                             UPDATE billets
-                            SET statut = 'UTILISE', utilise_le = CURRENT_TIMESTAMP, controle_par = ?
+                            SET statut = 'UTILISE', utilise_le = datetime('now', 'localtime'), controle_par = ?
                             WHERE id = ? AND statut = 'VALIDE'
                             """)) {
                         update.setLong(1, controllerId);
@@ -134,10 +193,9 @@ public final class AccessControlDao {
                 JOIN categories_billets c ON c.id = b.categorie_id
                 LEFT JOIN clients cl ON cl.id = v.client_id
                 WHERE b.code_unique = ?
-                FOR UPDATE OF b
                 """;
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setObject(1, ticketCode);
+            statement.setString(1, ticketCode.toString());
             try (ResultSet result = statement.executeQuery()) {
                 if (!result.next()) {
                     return null;
@@ -207,5 +265,12 @@ public final class AccessControlDao {
             String eventName,
             String categoryName,
             String customerName) {
+    }
+
+    public record TicketChoice(String code, String categoryName, String status) {
+        @Override
+        public String toString() {
+            return categoryName + " — " + status + " — " + code;
+        }
     }
 }

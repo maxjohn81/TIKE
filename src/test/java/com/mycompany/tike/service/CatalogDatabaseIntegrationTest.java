@@ -27,7 +27,7 @@ class CatalogDatabaseIntegrationTest {
     void catalogPersistsAndEnforcesRoomCapacityAndConflicts() throws SQLException {
         Assumptions.assumeTrue(
                 "1".equals(System.getenv("TIKE_RUN_DB_INTEGRATION")),
-                "Définir TIKE_RUN_DB_INTEGRATION=1 pour lancer ce test avec PostgreSQL.");
+                "Définir TIKE_RUN_DB_INTEGRATION=1 pour lancer ce test avec SQLite.");
 
         String suffix = UUID.randomUUID().toString().replace("-", "").substring(0, 10);
         Venue venue = null;
@@ -68,7 +68,7 @@ class CatalogDatabaseIntegrationTest {
 
             SQLException foreignKey = assertThrows(
                     SQLException.class, () -> catalogDao.deleteVenue(savedVenue.id()));
-            assertEquals("23503", foreignKey.getSQLState());
+            assertTrue(foreignKey.getMessage().toLowerCase(java.util.Locale.ROOT).contains("foreign key"));
         } finally {
             cleanup(venue, room, event);
         }

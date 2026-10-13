@@ -42,7 +42,7 @@ class RefundDatabaseIntegrationTest {
     void fullRefundInvalidatesTicketsRecordsHistoryAndRestoresStock() throws Exception {
         Assumptions.assumeTrue(
                 "1".equals(System.getenv("TIKE_RUN_DB_INTEGRATION")),
-                "Définir TIKE_RUN_DB_INTEGRATION=1 pour lancer ce test avec PostgreSQL.");
+                "Définir TIKE_RUN_DB_INTEGRATION=1 pour lancer ce test avec SQLite.");
 
         String suffix = UUID.randomUUID().toString().replace("-", "").substring(0, 10);
         long administratorId = 0;
@@ -76,7 +76,7 @@ class RefundDatabaseIntegrationTest {
                     administrator, refundableSale.number().toLowerCase(java.util.Locale.ROOT),
                     "Événement annulé par l’organisateur");
             assertEquals(refundableSale.number(), refund.saleNumber());
-            assertEquals(new BigDecimal("3500.00"), refund.amount());
+            assertEquals(0, new BigDecimal("3500.00").compareTo(refund.amount()));
             assertEquals(2, refund.ticketCount());
             assertNotEquals("", refund.refundNumber());
             assertEquals(8, catalogDao.findCategories(event.id()).stream()
@@ -158,7 +158,7 @@ class RefundDatabaseIntegrationTest {
             statement.setLong(1, saleId);
             try (ResultSet result = statement.executeQuery()) {
                 result.next();
-                return result.getObject(1, UUID.class).toString();
+                return result.getString(1);
             }
         }
     }
@@ -190,7 +190,8 @@ class RefundDatabaseIntegrationTest {
         try (Connection connection = DatabaseConfig.getConnection();
              PreparedStatement statement = connection.prepareStatement(
                      "UPDATE evenements SET debut = ? WHERE id = ?")) {
-            statement.setObject(1, startsAt);
+            statement.setString(1, startsAt.format(java.time.format.DateTimeFormatter
+                    .ofPattern("yyyy-MM-dd HH:mm:ss.SSSSSS")));
             statement.setLong(2, eventId);
             statement.executeUpdate();
         }

@@ -110,11 +110,10 @@ public final class RefundDao {
     private static SaleForRefund lockSale(Connection connection, String saleNumber) throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement("""
                 SELECT v.id, v.numero_vente, v.montant_total, v.statut,
-                       (e.debut > CURRENT_TIMESTAMP) AS evenement_a_venir
+                       (e.debut > datetime('now', 'localtime')) AS evenement_a_venir
                 FROM ventes v
                 JOIN evenements e ON e.id = v.evenement_id
                 WHERE v.numero_vente = ?
-                FOR UPDATE OF v, e
                 """)) {
             statement.setString(1, saleNumber);
             try (ResultSet result = statement.executeQuery()) {
@@ -138,7 +137,6 @@ public final class RefundDao {
                 FROM billets
                 WHERE vente_id = ?
                 ORDER BY id
-                FOR UPDATE
                 """)) {
             statement.setLong(1, saleId);
             try (ResultSet result = statement.executeQuery()) {
@@ -164,7 +162,6 @@ public final class RefundDao {
                 FROM paiements
                 WHERE vente_id = ? AND statut = 'PAYE'
                 ORDER BY id
-                FOR UPDATE
                 """)) {
             statement.setLong(1, saleId);
             try (ResultSet result = statement.executeQuery()) {

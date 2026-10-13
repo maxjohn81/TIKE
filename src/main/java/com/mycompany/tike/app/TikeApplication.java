@@ -23,13 +23,13 @@ public final class TikeApplication {
         boolean firstRun;
         try (Connection connection = DatabaseConfig.getConnection()) {
             if (connection.isClosed()) {
-                throw new SQLException("La connexion PostgreSQL a été fermée immédiatement après son ouverture.");
+                throw new SQLException("La connexion SQLite a été fermée immédiatement après son ouverture.");
             }
             firstRun = userDao.countUsers() == 0;
         } catch (IllegalStateException | SQLException e) {
             SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(
                     null,
-                    "Connexion PostgreSQL impossible : " + e.getMessage(),
+                    "Connexion à la base SQLite impossible : " + e.getMessage(),
                     "Erreur de connexion",
                     JOptionPane.ERROR_MESSAGE));
             return;

@@ -1,6 +1,7 @@
 package com.mycompany.tike.service;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.mycompany.tike.config.DatabaseConfig;
 import com.mycompany.tike.dao.AccessControlDao;
@@ -44,7 +45,7 @@ class AccessControlDatabaseIntegrationTest {
     void checksStatusesLogsAttemptsAndPreventsConcurrentDoubleEntry() throws Exception {
         Assumptions.assumeTrue(
                 "1".equals(System.getenv("TIKE_RUN_DB_INTEGRATION")),
-                "Définir TIKE_RUN_DB_INTEGRATION=1 pour lancer ce test avec PostgreSQL.");
+                "Définir TIKE_RUN_DB_INTEGRATION=1 pour lancer ce test avec SQLite.");
 
         String suffix = UUID.randomUUID().toString().replace("-", "").substring(0, 10);
         long sellerId = 0;
@@ -55,6 +56,7 @@ class AccessControlDatabaseIntegrationTest {
         Event secondEvent = null;
         ExecutorService executor = Executors.newFixedThreadPool(2);
         List<Long> saleIds = new ArrayList<>();
+        List<String> saleNumbers = new ArrayList<>();
         try {
             sellerId = createUser(suffix, "AGENT");
             controllerId = createUser(suffix, "CONTROLEUR");
@@ -78,8 +80,15 @@ class AccessControlDatabaseIntegrationTest {
                         event.id(), null, List.of(new SaleLineRequest(category.id(), 1)),
                         new BigDecimal("500.00"), PaymentMethod.ESPECES, null), sellerId);
                 saleIds.add(sale.id());
+                saleNumbers.add(sale.number());
                 codes.add(findTicketCode(sale.id()));
             }
+            List<com.mycompany.tike.model.SaleHistoryItem> eventSales =
+                    service.listSales(controller, event.id());
+            assertEquals(5, eventSales.size());
+            assertEquals("Client non renseigné", eventSales.get(0).clientName());
+            assertTrue(service.listSaleTickets(controller, event.id(), saleNumbers.get(0)).stream()
+                    .anyMatch(ticket -> ticket.code().equals(codes.get(0))));
 
             AccessControlResult accepted = service.check(controller, event.id(), codes.get(0));
             assertEquals(AccessControlOutcome.VALIDE, accepted.outcome());
@@ -161,7 +170,7 @@ class AccessControlDatabaseIntegrationTest {
                 if (!result.next()) {
                     throw new SQLException("Le billet de test n'a pas été créé.");
                 }
-                return result.getObject(1, UUID.class).toString();
+                return result.getString(1);
             }
         }
     }
@@ -169,7 +178,7 @@ class AccessControlDatabaseIntegrationTest {
     private static void setTicketStatus(String code, String status) throws SQLException {
         try (Connection connection = DatabaseConfig.getConnection();
              PreparedStatement statement = connection.prepareStatement(
-                     "UPDATE billets SET statut = ? WHERE code_unique = ?::uuid")) {
+                     "UPDATE billets SET statut = ? WHERE code_unique = ?")) {
             statement.setString(1, status);
             statement.setString(2, code);
             statement.executeUpdate();

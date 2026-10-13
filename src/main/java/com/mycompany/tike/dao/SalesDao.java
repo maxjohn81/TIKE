@@ -73,13 +73,16 @@ public final class SalesDao {
 
     public List<SaleHistoryItem> findClientHistory(long clientId) throws SQLException {
         String sql = """
-                SELECT v.numero_vente, e.nom AS evenement, v.date_vente, v.montant_total, v.statut,
-                       COUNT(b.id)::INTEGER AS nombre_billets
+                SELECT v.numero_vente, e.nom AS evenement,
+                       COALESCE(c.nom_complet, 'Client non renseigné') AS client,
+                       v.date_vente, v.montant_total, v.statut,
+                       COUNT(b.id) AS nombre_billets
                 FROM ventes v
                 JOIN evenements e ON e.id = v.evenement_id
+                LEFT JOIN clients c ON c.id = v.client_id
                 LEFT JOIN billets b ON b.vente_id = v.id
                 WHERE v.client_id = ?
-                GROUP BY v.id, e.nom
+                GROUP BY v.id, e.nom, c.nom_complet
                 ORDER BY v.date_vente DESC, v.id DESC
                 """;
         List<SaleHistoryItem> history = new ArrayList<>();
@@ -92,6 +95,7 @@ public final class SalesDao {
                     history.add(new SaleHistoryItem(
                             result.getString("numero_vente"),
                             result.getString("evenement"),
+                            result.getString("client"),
                             date == null ? null : date.toLocalDateTime(),
                             result.getBigDecimal("montant_total"),
                             result.getString("statut"),
@@ -100,6 +104,38 @@ public final class SalesDao {
             }
         }
         return history;
+    }
+
+    public List<SaleHistoryItem> findAllSales() throws SQLException {
+        String sql = """
+                SELECT v.numero_vente, e.nom AS evenement,
+                       COALESCE(c.nom_complet, 'Client non renseigné') AS client,
+                       v.date_vente, v.montant_total, v.statut,
+                       COUNT(b.id) AS nombre_billets
+                FROM ventes v
+                JOIN evenements e ON e.id = v.evenement_id
+                LEFT JOIN clients c ON c.id = v.client_id
+                LEFT JOIN billets b ON b.vente_id = v.id
+                GROUP BY v.id, e.nom, c.nom_complet
+                ORDER BY v.date_vente DESC, v.id DESC
+                """;
+        List<SaleHistoryItem> sales = new ArrayList<>();
+        try (Connection connection = DatabaseConfig.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql);
+             ResultSet result = statement.executeQuery()) {
+            while (result.next()) {
+                Timestamp date = result.getTimestamp("date_vente");
+                sales.add(new SaleHistoryItem(
+                        result.getString("numero_vente"),
+                        result.getString("evenement"),
+                        result.getString("client"),
+                        date == null ? null : date.toLocalDateTime(),
+                        result.getBigDecimal("montant_total"),
+                        result.getString("statut"),
+                        result.getInt("nombre_billets")));
+            }
+        }
+        return sales;
     }
 
     public List<Ticket> findPaidSaleTickets(String saleNumber) throws SQLException {
@@ -135,7 +171,7 @@ public final class SalesDao {
                             result.getString("categorie"),
                             result.getString("client"),
                             result.getBigDecimal("prix_unitaire"),
-                            result.getObject("code_unique", UUID.class).toString(),
+                            result.getString("code_unique"),
                             result.getString("statut")));
                 }
             }
@@ -254,12 +290,11 @@ public final class SalesDao {
     static void lockSellableEvent(Connection connection, long eventId) throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement("""
                 SELECT statut,
-                       (ouverture_vente IS NULL OR ouverture_vente <= CURRENT_TIMESTAMP) AS vente_ouverte,
-                       (fermeture_vente IS NULL OR fermeture_vente > CURRENT_TIMESTAMP) AS vente_non_fermee,
-                       (debut > CURRENT_TIMESTAMP) AS evenement_a_venir
+                       (ouverture_vente IS NULL OR ouverture_vente <= datetime('now', 'localtime')) AS vente_ouverte,
+                       (fermeture_vente IS NULL OR fermeture_vente > datetime('now', 'localtime')) AS vente_non_fermee,
+                       (debut > datetime('now', 'localtime')) AS evenement_a_venir
                 FROM evenements
                 WHERE id = ?
-                FOR UPDATE
                 """)) {
             statement.setLong(1, eventId);
             try (ResultSet result = statement.executeQuery()) {
@@ -284,7 +319,7 @@ public final class SalesDao {
 
     private static void ensureClientExists(Connection connection, long clientId) throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement(
-                "SELECT id FROM clients WHERE id = ? FOR KEY SHARE")) {
+                "SELECT id FROM clients WHERE id = ?")) {
             statement.setLong(1, clientId);
             try (ResultSet result = statement.executeQuery()) {
                 if (!result.next()) {
@@ -300,7 +335,6 @@ public final class SalesDao {
                 SELECT prix, quantite_totale
                 FROM categories_billets
                 WHERE id = ? AND evenement_id = ?
-                FOR UPDATE
                 """)) {
             statement.setLong(1, line.categoryId());
             statement.setLong(2, eventId);
@@ -353,7 +387,7 @@ public final class SalesDao {
                 statement.setLong(1, saleId);
                 statement.setLong(2, eventId);
                 statement.setLong(3, line.categoryId());
-                statement.setObject(4, UUID.randomUUID());
+                statement.setString(4, UUID.randomUUID().toString());
                 statement.addBatch();
             }
             statement.executeBatch();

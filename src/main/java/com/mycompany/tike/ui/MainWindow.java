@@ -18,7 +18,9 @@ import com.mycompany.tike.service.SalesService;
 import java.awt.BorderLayout;
 import java.awt.CardLayout;
 import java.awt.Dimension;
+import java.awt.GraphicsEnvironment;
 import java.awt.GridLayout;
+import java.awt.Rectangle;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Locale;
@@ -54,6 +56,8 @@ public final class MainWindow extends JFrame {
     private final JLabel dashboardReservationValue = new JLabel("—");
     private final JLabel dashboardStatus = new JLabel("Chargement des indicateurs…");
     private final DefaultListModel<String> recentActivityModel = new DefaultListModel<>();
+    private final DashboardCharts.BarChart monthlyRevenueChart = new DashboardCharts.BarChart();
+    private final DashboardCharts.PieChart eventDistributionChart = new DashboardCharts.PieChart();
 
     public MainWindow(UserSession session, AuthenticationService authenticationService, Runnable onLogout) {
         super("TIKE | Billetterie & contrôle d'accès");
@@ -67,9 +71,14 @@ public final class MainWindow extends JFrame {
 
     private void configureWindow() {
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        setMinimumSize(new Dimension(1024, 680));
-        setSize(1280, 800);
-        setLocationRelativeTo(null);
+        Rectangle usableBounds = GraphicsEnvironment.getLocalGraphicsEnvironment().getMaximumWindowBounds();
+        setMinimumSize(new Dimension(
+                Math.min(1024, usableBounds.width),
+                Math.min(680, usableBounds.height)));
+        setSize(Math.min(1280, usableBounds.width), Math.min(800, usableBounds.height));
+        setLocation(
+                usableBounds.x + (usableBounds.width - getWidth()) / 2,
+                usableBounds.y + (usableBounds.height - getHeight()) / 2);
     }
 
     private JPanel buildLayout() {
@@ -146,8 +155,20 @@ public final class MainWindow extends JFrame {
         signOut.setContentAreaFilled(false);
         signOut.setBorder(BorderFactory.createEmptyBorder(7, 0, 0, 0));
         signOut.addActionListener(event -> {
-            dispose();
-            onLogout.run();
+            Object[] options = {"Rester connecté", "Se déconnecter"};
+            int choice = javax.swing.JOptionPane.showOptionDialog(
+                    this,
+                    "Voulez-vous vraiment vous déconnecter de TIKE ?",
+                    "Confirmer la déconnexion",
+                    javax.swing.JOptionPane.YES_NO_OPTION,
+                    javax.swing.JOptionPane.QUESTION_MESSAGE,
+                    null,
+                    options,
+                    options[0]);
+            if (choice == 1) {
+                dispose();
+                onLogout.run();
+            }
         });
         profile.add(signOut, BorderLayout.SOUTH);
         return profile;
@@ -233,7 +254,8 @@ public final class MainWindow extends JFrame {
         intro.add(heading, BorderLayout.NORTH);
         intro.add(subtitle, BorderLayout.CENTER);
 
-        JPanel content = new JPanel(new BorderLayout(0, 18));
+        JPanel content = new JPanel();
+        content.setLayout(new javax.swing.BoxLayout(content, javax.swing.BoxLayout.Y_AXIS));
         content.setOpaque(false);
         JPanel infoCard = new JPanel(new BorderLayout(0, 10));
         infoCard.setBackground(UiTheme.SURFACE);
@@ -281,11 +303,27 @@ public final class MainWindow extends JFrame {
         }
         dashboardStatus.setForeground(UiTheme.MUTED);
         recent.add(dashboardStatus, BorderLayout.SOUTH);
-        content.add(cards, BorderLayout.NORTH);
-        content.add(infoCard, BorderLayout.CENTER);
-        content.add(recent, BorderLayout.SOUTH);
+        JPanel charts = new JPanel(new GridLayout(1, 2, 14, 0));
+        charts.setOpaque(false);
+        charts.add(DashboardCharts.card("Revenus encaissés · 6 derniers mois (Ar)", monthlyRevenueChart));
+        charts.add(DashboardCharts.card("Répartition des billets vendus par événement", eventDistributionChart));
+        charts.setPreferredSize(new Dimension(900, 310));
+        charts.setMinimumSize(new Dimension(0, 310));
+        charts.setMaximumSize(new Dimension(Integer.MAX_VALUE, 310));
+
+        for (JPanel section : List.of(cards, infoCard, charts, recent)) {
+            section.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+            section.setMaximumSize(new Dimension(Integer.MAX_VALUE, section.getPreferredSize().height));
+            content.add(section);
+            content.add(javax.swing.Box.createVerticalStrut(16));
+        }
+        JScrollPane scroll = new JScrollPane(content);
+        scroll.setBorder(null);
+        scroll.setOpaque(false);
+        scroll.getViewport().setOpaque(false);
+        scroll.getVerticalScrollBar().setUnitIncrement(18);
         page.add(intro, BorderLayout.NORTH);
-        page.add(content, BorderLayout.CENTER);
+        page.add(scroll, BorderLayout.CENTER);
         return page;
     }
 
@@ -294,10 +332,12 @@ public final class MainWindow extends JFrame {
             @Override
             protected DashboardData doInBackground() throws Exception {
                 ReportingDao.DashboardMetrics metrics = reportingService.dashboard(session);
+                List<ReportingDao.ChartValue> monthlyRevenue = reportingService.monthlyRevenue(session);
+                List<ReportingDao.ChartValue> ticketDistribution = reportingService.ticketDistribution(session);
                 List<ReportingDao.ActivityEntry> activity = session.getRole() == UserRole.ADMIN
                         ? reportingService.activity(session, null, null, "").stream().limit(5).toList()
                         : List.of();
-                return new DashboardData(metrics, activity);
+                return new DashboardData(metrics, monthlyRevenue, ticketDistribution, activity);
             }
 
             @Override
@@ -308,6 +348,8 @@ public final class MainWindow extends JFrame {
                     dashboardTicketValue.setText(Long.toString(data.metrics().soldTickets()));
                     dashboardRevenueValue.setText(formatCurrency(data.metrics().revenue()));
                     dashboardReservationValue.setText(Long.toString(data.metrics().pendingReservations()));
+                    monthlyRevenueChart.setValues(data.monthlyRevenue());
+                    eventDistributionChart.setValues(data.ticketDistribution());
                     recentActivityModel.clear();
                     for (ReportingDao.ActivityEntry entry : data.activity()) {
                         recentActivityModel.addElement(entry.createdAt().toString().replace('T', ' ')
@@ -336,14 +378,22 @@ public final class MainWindow extends JFrame {
         dashboardTicketValue.setText("—");
         dashboardRevenueValue.setText("—");
         dashboardReservationValue.setText("—");
+        monthlyRevenueChart.setError(message);
+        eventDistributionChart.setError(message);
     }
 
     private static String formatCurrency(BigDecimal amount) {
-        return String.format(Locale.FRANCE, "%,.2f", amount) + " FCFA";
+        java.text.NumberFormat format = java.text.NumberFormat.getNumberInstance(Locale.FRANCE);
+        format.setMinimumFractionDigits(0);
+        format.setMaximumFractionDigits(2);
+        return format.format(amount) + " Ar";
     }
 
     private record DashboardData(
-            ReportingDao.DashboardMetrics metrics, List<ReportingDao.ActivityEntry> activity) {
+            ReportingDao.DashboardMetrics metrics,
+            List<ReportingDao.ChartValue> monthlyRevenue,
+            List<ReportingDao.ChartValue> ticketDistribution,
+            List<ReportingDao.ActivityEntry> activity) {
     }
 
     private JPanel buildPlaceholder(NavigationItem item) {

@@ -6,6 +6,7 @@ import java.time.LocalDateTime;
 public record SaleHistoryItem(
         String saleNumber,
         String eventName,
+        String clientName,
         LocalDateTime soldAt,
         BigDecimal total,
         String status,

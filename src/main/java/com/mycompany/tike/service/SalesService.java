@@ -54,6 +54,11 @@ public final class SalesService {
         return salesDao.findClientHistory(clientId);
     }
 
+    public List<SaleHistoryItem> listSales(UserSession actor) throws SQLException {
+        requireSalesRole(actor);
+        return salesDao.findAllSales();
+    }
+
     public List<Ticket> findPaidSaleTickets(UserSession actor, String saleNumber) throws SQLException {
         requireSalesRole(actor);
         String normalizedNumber = saleNumber == null ? "" : saleNumber.trim().toUpperCase(java.util.Locale.ROOT);

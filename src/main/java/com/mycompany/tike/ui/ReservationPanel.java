@@ -97,6 +97,16 @@ public final class ReservationPanel extends JPanel {
                 BorderFactory.createEmptyBorder(14, 16, 14, 16)));
         JPanel form = new JPanel(new java.awt.GridLayout(0, 1, 0, 9));
         form.setOpaque(false);
+        JPanel formHeading = new JPanel(new BorderLayout());
+        formHeading.setOpaque(false);
+        JLabel formTitle = new JLabel("Nouvelle réservation");
+        formTitle.setFont(UiTheme.FONT_BOLD);
+        formTitle.setForeground(UiTheme.TEXT);
+        JButton reset = new JButton("Vider les champs");
+        reset.addActionListener(event -> resetReservationForm());
+        formHeading.add(formTitle, BorderLayout.WEST);
+        formHeading.add(reset, BorderLayout.EAST);
+        form.add(formHeading);
         JPanel eventRow = new JPanel(new BorderLayout(8, 0));
         eventRow.setOpaque(false);
         eventRow.add(UiComponents.formRow("Événement à venir *", events), BorderLayout.CENTER);
@@ -309,6 +319,22 @@ public final class ReservationPanel extends JPanel {
     private void clearCart() {
         cartModel.clear();
         events.setEnabled(true);
+    }
+
+    private void resetReservationForm() {
+        cartModel.clear();
+        events.setEnabled(true);
+        if (events.getItemCount() > 0) {
+            events.setSelectedIndex(0);
+        }
+        refreshCategories();
+        if (categories.getItemCount() > 0) {
+            categories.setSelectedIndex(0);
+        }
+        if (clients.getItemCount() > 0) {
+            clients.setSelectedIndex(0);
+        }
+        quantity.setValue(1);
     }
 
     private void createClient() {

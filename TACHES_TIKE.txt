@@ -29,10 +29,10 @@ Jalon : l’utilisateur valide le périmètre, les technologies et l’ordre de 
 
 PHASE 1 - SOCLE DU PROJET
 T05 [VALIDÉ] Organiser les packages sans casser l’existant : app, config, model, dao, service, ui, util.
-T06 [VALIDÉ] Configurer les dépendances nécessaires : pilote JDBC PostgreSQL et bibliothèque de hash de mot de passe.
+T06 [VALIDÉ] Configurer les dépendances nécessaires : pilote JDBC SQLite et bibliothèque de hash de mot de passe.
 T07 [VALIDÉ] Créer la configuration de connexion via variables d’environnement ou configuration locale ignorée par Git.
-T08 [VALIDÉ] Ajouter un test simple de connexion à PostgreSQL et des messages d’erreur lisibles.
-T09 [VALIDÉ] Créer schema.sql avec les tables validées, contraintes, clés étrangères et index.
+T08 [VALIDÉ] Ajouter un test simple de connexion à SQLite et des messages d’erreur lisibles.
+T09 [VALIDÉ] Créer le schéma SQLite avec les tables validées, contraintes, clés étrangères et index.
 T10 [VALIDÉ] Créer un script séparé de données de démonstration, sans secrets.
 T11 [VALIDÉ] Vérifier l’initialisation depuis une base vide.
 Jalon : connexion DB et schéma validés avant de poursuivre.
@@ -97,7 +97,7 @@ T49 [VALIDÉ] Créer l’écran de contrôle avec saisie manuelle du code.
 T50 [VALIDÉ] Vérifier existence, événement, paiement, statut et réutilisation.
 T51 [VALIDÉ] Marquer le billet utilisé de façon atomique et enregistrer le contrôleur/date.
 T52 [VALIDÉ] Afficher clairement VALIDE, DÉJÀ UTILISÉ, NON PAYÉ, ANNULÉ ou INTROUVABLE.
-T53 [À FAIRE] Ajouter lecture par caméra seulement après validation de la faisabilité matérielle et de la bibliothèque.
+T53 [À VALIDER] Scanner un QR Code via caméra Windows avec sélection du périphérique (Iriun si détectée) et contrôle en base.
 T54 [VALIDÉ] Tester deux tentatives successives sur le même billet.
 Jalon : un billet ne peut pas être accepté deux fois.
 
@@ -109,34 +109,42 @@ T58 [VALIDÉ] Tester remboursement intégral, refus et cohérence du stock.
 Jalon : historique financier cohérent.
 
 PHASE 10 - TABLEAU DE BORD, STATISTIQUES ET HISTORIQUE
-T59 [À VALIDER] Implémenter les requêtes de synthèse SQL.
-T60 [À VALIDER] Afficher événements, billets vendus, revenus encaissés et réservations en attente.
-T61 [À VALIDER] Ajouter ventes par période/événement et taux de remplissage.
-T62 [À VALIDER] Ajouter export CSV.
-T63 [À VALIDER] Enregistrer les actions critiques dans journal_activites.
-T64 [À VALIDER] Créer les écrans statistiques et historique avec filtres.
+T59 [VALIDÉ] Implémenter les requêtes de synthèse SQL.
+T60 [VALIDÉ] Afficher événements, billets vendus, revenus encaissés et réservations en attente.
+T61 [VALIDÉ] Ajouter ventes par période/événement et taux de remplissage.
+T62 [VALIDÉ] Ajouter export CSV.
+T63 [VALIDÉ] Enregistrer les actions critiques dans journal_activites.
+T64 [VALIDÉ] Créer les écrans statistiques et historique avec filtres.
 Jalon : chiffres du tableau de bord vérifiés contre la base.
 
 PHASE 11 - QUALITÉ ET LIVRAISON
-T65 [À FAIRE] Vérifier toutes les validations et les messages d’erreur.
-T66 [À FAIRE] Vérifier absence de concaténation SQL avec les saisies utilisateur.
-T67 [À FAIRE] Vérifier absence de mots de passe/secrets dans le dépôt.
-T68 [À FAIRE] Tester les rôles et restrictions d’accès.
-T69 [À FAIRE] Tester le parcours complet : événement -> catégorie -> client -> vente -> paiement -> billet -> contrôle.
-T70 [À FAIRE] Vérifier l’affichage à différentes tailles de fenêtre.
-T71 [À FAIRE] Documenter l’installation, la configuration PostgreSQL et le lancement.
-T72 [À FAIRE] Préparer une démonstration avec données de test et scénario de soutenance.
-T73 [À FAIRE] Faire un bilan des fonctionnalités terminées, limitées et non implémentées.
-Jalon final : validation utilisateur et préparation de la présentation.
+T65 [VALIDÉ] Vérifier toutes les validations et les messages d’erreur.
+T66 [VALIDÉ] Vérifier absence de concaténation SQL avec les saisies utilisateur.
+T67 [VALIDÉ] Vérifier absence de mots de passe/secrets dans le dépôt.
+T68 [VALIDÉ] Tester les rôles et restrictions d’accès.
+T69 [VALIDÉ] Tester le parcours complet : événement -> catégorie -> client -> vente -> paiement -> billet -> contrôle.
+T70 [VALIDÉ] Vérifier l’affichage à différentes tailles de fenêtre.
+T71 [VALIDÉ] Documenter l’installation, la base locale et le lancement.
+T72 [VALIDÉ] Préparer une démonstration avec données de test et scénario de soutenance.
+T73 [VALIDÉ] Faire un bilan des fonctionnalités terminées, limitées et non implémentées.
+Jalon final : [VALIDÉ] validation utilisateur et préparation de la présentation.
+
+PHASE 12 - MIGRATION VERS SQLITE LOCAL
+T74 [À VALIDER] Utiliser SQLite comme base locale par défaut et initialiser son schéma automatiquement.
+T75 [À VALIDER] Adapter et tester les ventes, réservations, remboursements, rapports et contrôles avec SQLite.
+T76 [VALIDÉ] Conserver les données existantes dans la base SQLite et vérifier les identifiants et relations.
+T77 [VALIDÉ] Conserver le compte maxadr existant, son hash BCrypt et son rôle ADMIN/actif, sans création de doublon ; choix confirmé par l’utilisateur.
+T78 [À VALIDER] Vérifier l’intégrité SQLite, les clés étrangères, les tests et la documentation.
+Jalon phase 12 : [À VALIDER] confirmer l’ouverture de l’application et la connexion avec maxadr sur le poste cible.
 
 ORDRE DE PRIORITÉ RECOMMANDÉ
-Priorité P0 : audit, décisions de conception, connexion PostgreSQL, schéma, thème/navigation, authentification.
+Priorité P0 : audit, décisions de conception, connexion à la base locale SQLite, schéma, thème/navigation, authentification.
 Priorité P1 : lieux/salles, événements, catégories, clients, vente atomique, paiement enregistré, billets uniques.
 Priorité P2 : impression/QR Code, contrôle d’accès, tableau de bord, historique, export CSV.
 Priorité P3 : réservations avec expiration, remboursements avancés, lecture caméra, PDF/graphes.
 
 CRITÈRES DE FIN MINIMAUX
-- L’application démarre et se connecte à PostgreSQL.
+- L’application démarre et se connecte à SQLite sans serveur de base de données.
 - Les rôles sont contrôlés.
 - Les événements et catégories sont persistés.
 - Une vente crée des billets uniques et un paiement cohérent.

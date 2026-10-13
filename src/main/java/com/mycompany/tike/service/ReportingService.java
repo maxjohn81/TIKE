@@ -21,6 +21,16 @@ public final class ReportingService {
         return reportingDao.dashboardMetrics();
     }
 
+    public List<ReportingDao.ChartValue> monthlyRevenue(UserSession actor) throws SQLException {
+        requireAuthenticated(actor);
+        return reportingDao.monthlyRevenue();
+    }
+
+    public List<ReportingDao.ChartValue> ticketDistribution(UserSession actor) throws SQLException {
+        requireAuthenticated(actor);
+        return reportingDao.ticketDistributionByEvent();
+    }
+
     public List<ReportingDao.EventOption> events(UserSession actor) throws SQLException {
         requireAdmin(actor);
         return reportingDao.findEventOptions();
@@ -56,6 +66,12 @@ public final class ReportingService {
     private static void requireAdmin(UserSession actor) {
         if (actor == null || actor.getRole() != UserRole.ADMIN) {
             throw new SecurityException("Cette fonctionnalité est réservée aux administrateurs.");
+        }
+    }
+
+    private static void requireAuthenticated(UserSession actor) {
+        if (actor == null) {
+            throw new SecurityException("Une session authentifiée est nécessaire.");
         }
     }
 }

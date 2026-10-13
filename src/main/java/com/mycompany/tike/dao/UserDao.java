@@ -13,9 +13,6 @@ import java.util.List;
 import java.util.Optional;
 
 public final class UserDao {
-    private static final int ADMIN_SETUP_LOCK_CLASS = 843927;
-    private static final int ADMIN_SETUP_LOCK_ID = 1;
-
     public Optional<UserCredential> findActiveByUsername(String username) throws SQLException {
         String sql = """
                 SELECT id, nom_complet, nom_utilisateur, role, actif, mot_de_passe_hash
@@ -69,7 +66,6 @@ public final class UserDao {
         try (Connection connection = DatabaseConfig.getConnection()) {
             connection.setAutoCommit(false);
             try {
-                acquireAdminSetupLock(connection);
                 if (countUsers(connection) != 0) {
                     throw new IllegalStateException("Un compte existe déjà. Connectez-vous avec un compte administrateur.");
                 }
@@ -101,7 +97,6 @@ public final class UserDao {
         try (Connection connection = DatabaseConfig.getConnection()) {
             connection.setAutoCommit(false);
             try {
-                acquireAdminSetupLock(connection);
                 User user;
                 try (PreparedStatement statement = connection.prepareStatement(sql)) {
                     statement.setString(1, fullName);
@@ -133,7 +128,6 @@ public final class UserDao {
             connection.setAutoCommit(false);
             connection.setTransactionIsolation(Connection.TRANSACTION_SERIALIZABLE);
             try {
-                acquireAdminSetupLock(connection);
                 if (user.getRole() != UserRole.ADMIN || !user.isActive()) {
                     ensureAnotherActiveAdmin(connection, user.getId());
                 }
@@ -176,10 +170,9 @@ public final class UserDao {
             connection.setAutoCommit(false);
             connection.setTransactionIsolation(Connection.TRANSACTION_SERIALIZABLE);
             try {
-                acquireAdminSetupLock(connection);
                 User user;
                 try (PreparedStatement find = connection.prepareStatement(
-                        "SELECT role FROM utilisateurs WHERE id = ? FOR UPDATE")) {
+                        "SELECT role FROM utilisateurs WHERE id = ?")) {
                     find.setLong(1, userId);
                     try (ResultSet result = find.executeQuery()) {
                         if (!result.next()) {
@@ -203,14 +196,6 @@ public final class UserDao {
                 rollback(connection, e);
                 throw e;
             }
-        }
-    }
-
-    private static void acquireAdminSetupLock(Connection connection) throws SQLException {
-        try (PreparedStatement statement = connection.prepareStatement("SELECT pg_advisory_xact_lock(?, ?)")) {
-            statement.setInt(1, ADMIN_SETUP_LOCK_CLASS);
-            statement.setInt(2, ADMIN_SETUP_LOCK_ID);
-            statement.execute();
         }
     }
 

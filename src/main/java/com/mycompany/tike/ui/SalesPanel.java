@@ -5,6 +5,7 @@ import com.mycompany.tike.model.Event;
 import com.mycompany.tike.model.EventStatus;
 import com.mycompany.tike.model.PaymentMethod;
 import com.mycompany.tike.model.SaleLineRequest;
+import com.mycompany.tike.model.SaleHistoryItem;
 import com.mycompany.tike.model.SaleRequest;
 import com.mycompany.tike.model.SaleResult;
 import com.mycompany.tike.model.Ticket;
@@ -45,14 +46,18 @@ public final class SalesPanel extends JPanel {
     private final JComboBox<EventChoice> events = new JComboBox<>();
     private final JComboBox<CategoryChoice> categories = new JComboBox<>();
     private final JComboBox<ClientChoice> clients = new JComboBox<>();
-    private final JComboBox<PaymentMethod> paymentMethod = new JComboBox<>(PaymentMethod.values());
+    private final JComboBox<PaymentMethod> paymentMethod = new JComboBox<>();
     private final JSpinner quantity = new JSpinner(new SpinnerNumberModel(1, 1, Integer.MAX_VALUE, 1));
     private final JTextField paymentReference = CatalogUiSupport.textField("");
     private final JTextField ticketSaleNumber = CatalogUiSupport.textField("");
     private final JTextField refundSaleNumber = CatalogUiSupport.textField("");
+    private final SaleSearchPicker reprintSalePicker = new SaleSearchPicker(ticketSaleNumber::setText);
+    private final SaleSearchPicker refundSalePicker = new SaleSearchPicker(refundSaleNumber::setText);
     private final JTextField refundReason = CatalogUiSupport.textField("");
     private final CartTableModel cartModel = new CartTableModel();
     private final JTable cartTable = new JTable(cartModel);
+    private final SalesTableModel salesModel = new SalesTableModel();
+    private final JTable salesTable = new JTable(salesModel);
     private final JLabel totalLabel = new JLabel();
     private boolean refreshingEvents;
 
@@ -72,24 +77,60 @@ public final class SalesPanel extends JPanel {
         body.setBorder(BorderFactory.createEmptyBorder(14, 0, 0, 0));
         body.add(buildSaleForm(), BorderLayout.NORTH);
         body.add(buildCart(), BorderLayout.CENTER);
-        body.add(buildBottomActions(), BorderLayout.SOUTH);
+        JPanel lower = new JPanel();
+        lower.setOpaque(false);
+        lower.setLayout(new javax.swing.BoxLayout(lower, javax.swing.BoxLayout.Y_AXIS));
+        JPanel actions = buildBottomActions();
+        actions.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        actions.setMaximumSize(new java.awt.Dimension(Integer.MAX_VALUE, actions.getPreferredSize().height));
+        lower.add(actions);
+        lower.add(javax.swing.Box.createVerticalStrut(14));
+        JPanel salesHistory = buildSalesHistory();
+        salesHistory.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        salesHistory.setMaximumSize(new java.awt.Dimension(Integer.MAX_VALUE, Integer.MAX_VALUE));
+        lower.add(salesHistory);
+        body.add(lower, BorderLayout.SOUTH);
         JScrollPane pageScroll = new JScrollPane(
                 body,
                 JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED,
-                JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
+                JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED);
         pageScroll.setBorder(BorderFactory.createEmptyBorder());
         pageScroll.setOpaque(false);
         pageScroll.getViewport().setOpaque(false);
         add(pageScroll, BorderLayout.CENTER);
         events.addActionListener(event -> refreshCategories());
+        paymentMethod.addItem(null);
+        for (PaymentMethod method : PaymentMethod.values()) {
+            paymentMethod.addItem(method);
+        }
+        paymentMethod.setSelectedIndex(0);
+        paymentMethod.setRenderer((list, value, index, selected, focus) -> {
+            JLabel label = new JLabel(value == null ? "Sélectionnez un mode de paiement" : value.getLabel());
+            label.setOpaque(true);
+            label.setBackground(selected ? list.getSelectionBackground() : list.getBackground());
+            label.setForeground(selected ? list.getSelectionForeground() : list.getForeground());
+            return label;
+        });
         refreshEvents();
         refreshClients();
+        refreshSales();
         updateTotal();
     }
 
     private JPanel buildSaleForm() {
         JPanel form = new JPanel(new java.awt.GridLayout(0, 1, 0, 10));
         form.setOpaque(false);
+
+        JPanel formHeading = new JPanel(new BorderLayout());
+        formHeading.setOpaque(false);
+        JLabel formTitle = new JLabel("Nouvelle vente");
+        formTitle.setFont(UiTheme.FONT_BOLD);
+        formTitle.setForeground(UiTheme.TEXT);
+        JButton reset = new JButton("Vider les champs");
+        reset.addActionListener(event -> resetSaleForm());
+        formHeading.add(formTitle, BorderLayout.WEST);
+        formHeading.add(reset, BorderLayout.EAST);
+        form.add(formHeading);
 
         JPanel eventRow = new JPanel(new BorderLayout(8, 0));
         eventRow.setOpaque(false);
@@ -112,13 +153,19 @@ public final class SalesPanel extends JPanel {
         clientPayment.setOpaque(false);
         JPanel clientField = new JPanel(new BorderLayout(5, 0));
         clientField.setOpaque(false);
-        clientField.add(UiComponents.formRow("Client (facultatif)", clients), BorderLayout.CENTER);
+        JPanel clientRow = UiComponents.formRow("Client (facultatif)", clients);
+        clients.setPreferredSize(new java.awt.Dimension(150, 40));
+        clientField.add(clientRow, BorderLayout.CENTER);
         JButton newClient = new JButton("Nouveau client");
         newClient.addActionListener(event -> createClient());
         clientField.add(newClient, BorderLayout.SOUTH);
         clientPayment.add(clientField);
-        clientPayment.add(UiComponents.formRow("Mode de paiement *", paymentMethod));
-        clientPayment.add(UiComponents.formRow("Référence (facultative)", paymentReference));
+        JPanel paymentRow = UiComponents.formRow("Mode de paiement *", paymentMethod);
+        paymentMethod.setPreferredSize(new java.awt.Dimension(150, 40));
+        clientPayment.add(paymentRow);
+        JPanel referenceRow = UiComponents.formRow("Référence (facultative)", paymentReference);
+        paymentReference.setPreferredSize(new java.awt.Dimension(150, 40));
+        clientPayment.add(referenceRow);
         form.add(clientPayment);
 
         JLabel notice = new JLabel(
@@ -166,6 +213,8 @@ public final class SalesPanel extends JPanel {
         JPanel panel = new JPanel(new BorderLayout(10, 0));
         panel.setOpaque(false);
         panel.setBorder(BorderFactory.createTitledBorder("Billets et réimpression"));
+        reprintSalePicker.setToolTipText("Rechercher par nom du client, événement ou numéro de vente");
+        panel.add(reprintSalePicker, BorderLayout.NORTH);
         ticketSaleNumber.setToolTipText("Saisissez le numéro de vente, par exemple VT-...");
         ticketSaleNumber.addActionListener(event -> findTickets());
         panel.add(UiComponents.formRow("Numéro de vente", ticketSaleNumber), BorderLayout.CENTER);
@@ -185,15 +234,61 @@ public final class SalesPanel extends JPanel {
         return actions;
     }
 
+    private JPanel buildSalesHistory() {
+        JPanel panel = new JPanel(new BorderLayout(0, 8));
+        panel.setOpaque(false);
+        JLabel heading = new JLabel("Toutes les ventes enregistrées");
+        heading.setFont(UiTheme.FONT_BOLD);
+        heading.setForeground(UiTheme.TEXT);
+        JButton refresh = new JButton("Actualiser");
+        refresh.addActionListener(event -> refreshSales());
+        JPanel titleRow = new JPanel(new BorderLayout());
+        titleRow.setOpaque(false);
+        titleRow.add(heading, BorderLayout.WEST);
+        titleRow.add(refresh, BorderLayout.EAST);
+        panel.add(titleRow, BorderLayout.NORTH);
+        salesTable.setAutoResizeMode(JTable.AUTO_RESIZE_OFF);
+        salesTable.setFillsViewportHeight(true);
+        setMinimumSalesColumnWidths();
+        JScrollPane tableScroll = UiComponents.styleTable(salesTable);
+        tableScroll.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_AS_NEEDED);
+        tableScroll.setPreferredSize(new java.awt.Dimension(0, 220));
+        tableScroll.setMinimumSize(new java.awt.Dimension(0, 180));
+        panel.add(tableScroll, BorderLayout.CENTER);
+        panel.setAlignmentX(java.awt.Component.LEFT_ALIGNMENT);
+        panel.setMaximumSize(new java.awt.Dimension(Integer.MAX_VALUE, Integer.MAX_VALUE));
+        return panel;
+    }
+
+    private void setMinimumSalesColumnWidths() {
+        int[] minimumWidths = {75, 70, 85, 80, 75, 50};
+        for (int index = 0; index < minimumWidths.length; index++) {
+            salesTable.getColumnModel().getColumn(index).setMinWidth(minimumWidths[index]);
+        }
+    }
+
+    private void refreshSales() {
+        try {
+            List<SaleHistoryItem> sales = salesService.listSales(session);
+            salesModel.setSales(sales);
+            reprintSalePicker.setSales(sales, "PAYEE");
+            refundSalePicker.setSales(sales, "PAYEE");
+        } catch (Exception error) {
+            CatalogUiSupport.showFailure(this, error);
+        }
+    }
+
     private JPanel buildRefundForm() {
         JPanel panel = new JPanel(new BorderLayout(10, 8));
         panel.setOpaque(false);
         panel.setBorder(BorderFactory.createTitledBorder("Remboursement intégral — Administrateur"));
         JPanel fields = new JPanel(new java.awt.GridLayout(1, 2, 10, 0));
         fields.setOpaque(false);
+        refundSalePicker.setToolTipText("Rechercher par nom du client, événement ou numéro de vente");
+        fields.add(refundSalePicker);
         refundSaleNumber.setToolTipText("Numéro de la vente à rembourser");
         refundReason.setToolTipText("Motif obligatoire du remboursement");
-        fields.add(UiComponents.formRow("Numéro de vente", refundSaleNumber));
+        fields.add(UiComponents.formRow("Numéro de vente sélectionné", refundSaleNumber));
         fields.add(UiComponents.formRow("Motif *", refundReason));
         panel.add(fields, BorderLayout.CENTER);
         JButton refund = new JButton("Enregistrer le remboursement");
@@ -223,6 +318,8 @@ public final class SalesPanel extends JPanel {
                             + "\nLe stock correspondant est de nouveau disponible.",
                     true);
             refundReason.setText("");
+            refundSaleNumber.setText("");
+            refreshSales();
         } catch (Exception error) {
             CatalogUiSupport.showFailure(this, error);
         }
@@ -232,12 +329,10 @@ public final class SalesPanel extends JPanel {
         try {
             refreshingEvents = true;
             events.removeAllItems();
+            events.addItem(new EventChoice(null));
             List<Event> onSale = catalogService.listEvents(session, "", EventStatus.EN_VENTE);
             for (Event event : onSale) {
                 events.addItem(new EventChoice(event));
-            }
-            if (onSale.isEmpty()) {
-                events.addItem(new EventChoice(null));
             }
         } catch (Exception error) {
             CatalogUiSupport.showFailure(this, error);
@@ -340,6 +435,24 @@ public final class SalesPanel extends JPanel {
         updateTotal();
     }
 
+    private void resetSaleForm() {
+        clearCart();
+        events.setEnabled(true);
+        if (events.getItemCount() > 0) {
+            events.setSelectedIndex(0);
+        }
+        if (categories.getItemCount() > 0) {
+            categories.setSelectedIndex(0);
+        }
+        if (clients.getItemCount() > 0) {
+            clients.setSelectedIndex(0);
+        }
+        quantity.setValue(1);
+        paymentMethod.setSelectedIndex(0);
+        paymentReference.setText("");
+        ticketSaleNumber.setText("");
+    }
+
     private void updateTotal() {
         totalLabel.setText("Total : " + money(cartModel.total()) + " Ar");
     }
@@ -376,13 +489,18 @@ public final class SalesPanel extends JPanel {
             UiComponents.showResult(this, "Ajoutez au moins une catégorie au panier.", false);
             return;
         }
+        PaymentMethod selectedPaymentMethod = (PaymentMethod) paymentMethod.getSelectedItem();
+        if (selectedPaymentMethod == null) {
+            UiComponents.showResult(this, "Sélectionnez un mode de paiement.", false);
+            return;
+        }
         EventChoice selectedEvent = (EventChoice) events.getSelectedItem();
         if (selectedEvent == null || selectedEvent.event() == null) {
             UiComponents.showResult(this, "Sélectionnez un événement en vente.", false);
             return;
         }
         ClientChoice selectedClient = (ClientChoice) clients.getSelectedItem();
-        String paymentName = ((PaymentMethod) paymentMethod.getSelectedItem()).getLabel();
+        String paymentName = selectedPaymentMethod.getLabel();
         String confirmation = "<html>Événement : <b>" + selectedEvent.event().name() + "</b><br>"
                 + "Billets : <b>" + cartModel.ticketCount() + "</b><br>"
                 + "Total : <b>" + money(cartModel.total()) + " Ar</b><br>"
@@ -402,16 +520,15 @@ public final class SalesPanel extends JPanel {
                     ? null : selectedClient.client().id();
             sale = salesService.createSale(session, new SaleRequest(
                     selectedEvent.event().id(), clientId, lines, cartModel.total(),
-                    (PaymentMethod) paymentMethod.getSelectedItem(), paymentReference.getText()));
+                    selectedPaymentMethod, paymentReference.getText()));
         } catch (Exception error) {
             CatalogUiSupport.showFailure(this, error);
             refreshCategories();
             return;
         }
-        clearCart();
-        paymentReference.setText("");
-        ticketSaleNumber.setText(sale.number());
+        resetSaleForm();
         refreshEvents();
+        refreshSales();
         try {
             List<Ticket> tickets = salesService.findPaidSaleTickets(session, sale.number());
             TicketPrintDialog.show(this, tickets);
@@ -438,11 +555,37 @@ public final class SalesPanel extends JPanel {
         return MONEY.format(value);
     }
 
+    private final class SalesTableModel extends DefaultTableModel {
+        private SalesTableModel() {
+            super(new Object[] {"N° vente", "Client", "Événement", "Date", "Montant (Ar)", "Statut", "Billets"}, 0);
+        }
+
+        private void setSales(List<SaleHistoryItem> sales) {
+            setRowCount(0);
+            for (SaleHistoryItem sale : sales) {
+                addRow(new Object[] {
+                    sale.saleNumber(),
+                    sale.clientName(),
+                    sale.eventName(),
+                    sale.soldAt() == null ? "" : DATE_FORMAT.format(sale.soldAt()),
+                    money(sale.total()) + " Ar",
+                    sale.status(),
+                    sale.ticketCount()
+                });
+            }
+        }
+
+        @Override
+        public boolean isCellEditable(int row, int column) {
+            return false;
+        }
+    }
+
     private record EventChoice(Event event) {
         @Override
         public String toString() {
             if (event == null) {
-                return "Aucun événement en vente";
+                return "Sélectionnez un événement";
             }
             String date = event.startsAt() == null ? "" : DATE_FORMAT.format(event.startsAt());
             return event.name() + " — " + date;

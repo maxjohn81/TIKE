@@ -110,7 +110,7 @@ public final class CatalogDao {
             try {
                 if (room.id() != 0) {
                     try (PreparedStatement lock = connection.prepareStatement(
-                            "SELECT id FROM salles WHERE id = ? FOR UPDATE")) {
+                            "SELECT id FROM salles WHERE id = ?")) {
                         lock.setLong(1, room.id());
                         try (ResultSet result = lock.executeQuery()) {
                             if (!result.next()) {
@@ -378,8 +378,8 @@ public final class CatalogDao {
                 WHERE salle_id = ?
                   AND statut NOT IN ('ANNULE', 'TERMINE')
                   AND (? = 0 OR id <> ?)
-                  AND debut < COALESCE(?, ? + INTERVAL '1 hour')
-                  AND COALESCE(fin, debut + INTERVAL '1 hour') > ?
+                  AND debut < COALESCE(?, datetime(?, '+1 hour'))
+                  AND COALESCE(fin, datetime(debut, '+1 hour')) > ?
                 LIMIT 1
                 """;
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
@@ -446,7 +446,7 @@ public final class CatalogDao {
 
     private static Integer lockRoom(Connection connection, long roomId) throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement(
-                "SELECT capacite FROM salles WHERE id = ? FOR UPDATE")) {
+                "SELECT capacite FROM salles WHERE id = ?")) {
             statement.setLong(1, roomId);
             try (ResultSet result = statement.executeQuery()) {
                 if (!result.next()) {
@@ -463,7 +463,6 @@ public final class CatalogDao {
                 FROM evenements e
                 LEFT JOIN salles s ON s.id = e.salle_id
                 WHERE e.id = ?
-                FOR UPDATE OF e
                 """)) {
             statement.setLong(1, eventId);
             try (ResultSet result = statement.executeQuery()) {
@@ -528,7 +527,8 @@ public final class CatalogDao {
         if (value == null) {
             statement.setNull(index, java.sql.Types.TIMESTAMP_WITH_TIMEZONE);
         } else {
-            statement.setObject(index, value.atZone(java.time.ZoneId.systemDefault()).toOffsetDateTime());
+            statement.setString(index, value.format(java.time.format.DateTimeFormatter
+                    .ofPattern("yyyy-MM-dd HH:mm:ss.SSSSSS")));
         }
     }
 

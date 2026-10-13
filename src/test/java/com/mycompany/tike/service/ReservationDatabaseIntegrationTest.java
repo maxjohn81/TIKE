@@ -48,7 +48,7 @@ class ReservationDatabaseIntegrationTest {
     void reservationsHoldReleaseExpireAndConvertOnlyOnce() throws Exception {
         Assumptions.assumeTrue(
                 "1".equals(System.getenv("TIKE_RUN_DB_INTEGRATION")),
-                "Définir TIKE_RUN_DB_INTEGRATION=1 pour lancer ce test avec PostgreSQL.");
+                "Définir TIKE_RUN_DB_INTEGRATION=1 pour lancer ce test avec SQLite.");
 
         String suffix = UUID.randomUUID().toString().replace("-", "").substring(0, 10);
         long sellerId = 0;
@@ -162,8 +162,8 @@ class ReservationDatabaseIntegrationTest {
         try (Connection connection = DatabaseConfig.getConnection();
              PreparedStatement statement = connection.prepareStatement("""
                      UPDATE reservations
-                     SET cree_le = CURRENT_TIMESTAMP - INTERVAL '25 hours',
-                         expire_le = CURRENT_TIMESTAMP - INTERVAL '1 minute'
+                     SET cree_le = datetime('now', '-25 hours'),
+                         expire_le = datetime('now', '-1 minute')
                      WHERE id = ?
                      """)) {
             statement.setLong(1, reservationId);

@@ -1,6 +1,7 @@
 # TIKE
 
 Application de bureau Java Swing pour la gestion de billetterie et le contrôle d'accès.
+Conception et développement d’un système informatisé de gestion de billetterie et de contrôle d’accès aux événements
 
 ## Prérequis
 
